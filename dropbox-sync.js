@@ -192,7 +192,7 @@
         var j = null; try { j = JSON.parse(txt); } catch (e) { }
         var sum = (j && j.error_summary) || txt || "";
         if (r.status === 401) { sdel(K.auth); throw err("Ta connexion Dropbox a expiré ou a été révoquée.", "auth"); }
-        if (/not_found/.test(sum)) throw err("Le dossier « " + (FOLDER || "/") + " » est introuvable dans le dossier de l'app Dropbox.", "folder");
+        if (/not_found/.test(sum)) throw err("Le dossier « " + (FOLDER || "/") + " » est introuvable dans ton Dropbox.", "folder");
         if (/missing_scope/.test(sum)) throw err("Il manque une permission à l'app Dropbox (files.metadata.read et files.content.read).", "scope");
         if (r.status === 429) throw err("Dropbox limite temporairement les requêtes. Réessaie dans une minute.", "http");
         throw err("Dropbox a répondu par une erreur (" + r.status + ").", "http");
@@ -250,7 +250,7 @@
     show("load", "Chargement des derniers fichiers depuis Dropbox…");
     return waitReady().then(listFolder).then(function (entries) {
       var db = latest(entries, /\.database$/i), rtf = latest(entries, /\.rtf$/i);
-      if (!db && !rtf) throw err("Aucun fichier .database ni .rtf dans le dossier « " + (FOLDER || "/") + " » de l'app Dropbox.", "empty");
+      if (!db && !rtf) throw err("Aucun fichier .database ni .rtf dans le dossier « " + (FOLDER || "/") + " » de ton Dropbox.", "empty");
       var prev = sget(K.revs) || {}, app = window.SuiviApp, fresh = !app.hasData();
       var todo = [db, rtf].filter(function (e) { return e && (force || fresh || prev[e.id] !== e.rev); });
       // Rien de nouveau : les données enregistrées sur l'appareil sont déjà à jour

@@ -42,7 +42,7 @@ Puis, dans `index.html` :
 ```js
 window.APP_CONFIG = {
   DROPBOX_APP_KEY: "ton_app_key",
-  DROPBOX_FOLDER: "",          // "" = racine du dossier de l'app, ou "/Exports"
+  DROPBOX_FOLDER: "/Data Entrainement", // accès complet : chemin depuis la racine du Dropbox
   FROM_DATE: "2026-10-20",
   REDIRECT_URI: ""             // vide = adresse de la page
 };

@@ -9,15 +9,15 @@
 /* =====================================================================
    CONFIGURATION — à modifier ici uniquement
    - DROPBOX_APP_KEY : « App key » de ton app Dropbox (ce n'est pas un secret).
-   - DROPBOX_FOLDER  : dossier où chercher les fichiers. Avec une app de type
-     « App folder », le chemin est relatif à Applications/<nom de l'app> :
-     "" = la racine de ce dossier, "/Exports" = un sous-dossier.
+   - DROPBOX_FOLDER  : dossier où chercher les fichiers. App avec accès à tout
+     le Dropbox : chemin depuis la racine du Dropbox ("/Data Entrainement").
+     App de type « App folder » : chemin relatif à Applications/<nom de l'app>.
    - FROM_DATE       : les données ne sont prises qu'à partir de ce jour.
    - REDIRECT_URI    : laisse vide pour utiliser l'adresse de la page.
    ===================================================================== */
 window.APP_CONFIG = {
   DROPBOX_APP_KEY: "nzxx87utkwf747u",
-  DROPBOX_FOLDER: "",
+  DROPBOX_FOLDER: "/Data Entrainement",
   FROM_DATE: "2026-10-20",
   REDIRECT_URI: ""
 };
