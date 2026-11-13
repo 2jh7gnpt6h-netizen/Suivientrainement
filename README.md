@@ -19,7 +19,7 @@ seulement de Dropbox vers le navigateur et restent sur l'appareil (localStorage)
 | `dropbox-sync.js` | Connexion OAuth 2 PKCE, `files/list_folder`, `files/download`, renouvellement du token. |
 | `manifest.webmanifest`, `icons/` | Installation sur l'écran d'accueil (PWA). |
 | `sw.js` | Mode hors ligne : la page s'ouvre sans réseau avec les dernières données. |
-| `.github/workflows/pages.yml` | Publication sur GitHub Pages (seuls les fichiers ci-dessus sont publiés). |
+| `.nojekyll` | Publication telle quelle par GitHub Pages (Settings → Pages → Deploy from a branch → main / root). |
 
 ## Configurer l'app Dropbox
 
