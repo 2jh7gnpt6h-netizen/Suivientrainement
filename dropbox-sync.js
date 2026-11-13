@@ -91,7 +91,7 @@
     var verifier = randomString(48), state = randomString(16);
     return sha256(verifier).then(function (challenge) {
       sset(K.pkce, { v: verifier, s: state, mode: mode, at: Date.now() });
-      var q = { client_id: APP_KEY, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", token_access_type: "offline" };
+      var q = { client_id: APP_KEY, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", token_access_type: "offline", require_role: "personal" };
       if (mode === "redirect") { q.redirect_uri = redirectUri(); q.state = state; }
       return AUTHORIZE + "?" + new URLSearchParams(q).toString();
     });
