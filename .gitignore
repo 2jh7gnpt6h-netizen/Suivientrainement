@@ -1,0 +1,15 @@
+# Données personnelles : jamais dans le dépôt
+*.database
+*.database-*
+*.sqlite
+*.db
+*.rtf
+*.csv
+*.ods
+*.xlsx
+*.xls
+suivi_sauvegarde_*.json
+
+# Divers
+.DS_Store
+node_modules/
