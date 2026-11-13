@@ -22,7 +22,8 @@
   var RESYNC_MS = 10 * 60 * 1000; // au retour dans l'app après 10 min, on revérifie Dropbox
 
   var box = document.getElementById("dbx"), btn = document.getElementById("dbxBtn");
-  var busy = false, lastSync = 0;
+  var busy = false, lastSync = 0, okFull = "";
+  function showDetails() { show("ok", okFull, '<button type="button" class="linkbtn" data-a="hide">Masquer</button>' + A_OUT); }
 
   /* ---------- Outils ---------- */
   function normFolder(p) {
@@ -75,6 +76,7 @@
     else if (a === "retry") sync(true);
     else if (a === "logout") logout();
     else if (a === "hide") hide();
+    else if (a === "details") showDetails();
     else if (a === "send") submitCode();
   });
   function showDisconnected(extra) {
@@ -269,9 +271,11 @@
       lastSync = Date.now();
       var now = new Date();
       sset(K.last, { at: now.toISOString(), files: filesLine(res.db, res.rtf) });
-      show("ok", "<b>Dropbox à jour</b> (" + hm(now) + (res.same ? ", aucun nouveau fichier" : "") + "). " + filesLine(res.db, res.rtf) +
-        (!res.db ? " · aucune sauvegarde GymBook trouvée" : "") + (!res.rtf ? " · aucun export Santé trouvé" : ""),
-        '<button type="button" class="linkbtn" data-a="hide">Masquer</button>' + A_OUT);
+      okFull = "<b>Dropbox à jour</b> (" + hm(now) + (res.same ? ", aucun nouveau fichier" : "") + "). " + filesLine(res.db, res.rtf) +
+        (!res.db ? " · aucune sauvegarde GymBook trouvée" : "") + (!res.rtf ? " · aucun export Santé trouvé" : "");
+      // Tout est là : une seule ligne discrète ; un fichier manque : le détail reste affiché
+      if (res.db && res.rtf) show("ok compact", "<b>Dropbox à jour</b> à " + hm(now), '<button type="button" class="linkbtn" data-a="details">Détails</button>');
+      else showDetails();
     }).catch(function (e) {
       var msg = e && e.user ? e.user : "La synchronisation Dropbox n'a pas abouti.";
       if (e && e.kind === "auth") { showDisconnected("<b>" + esc(msg) + "</b> Reconnecte-toi."); return; }
