@@ -55,3 +55,8 @@ plein écran. Connecte Dropbox **depuis l'app installée** (son stockage est sé
 de celui de Safari). Si, après l'autorisation Dropbox, tu te retrouves dans Safari
 ou si la connexion ne se finalise pas, utilise **Connexion par code** : Dropbox
 affiche un code que tu colles dans l'app.
+
+## Mettre à jour la page
+
+Toute modification poussée sur `main` est republiée automatiquement par GitHub Pages
+(Settings → Pages → Deploy from a branch → `main` / root) en une à deux minutes.
