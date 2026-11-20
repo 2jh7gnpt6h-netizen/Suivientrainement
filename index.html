@@ -523,6 +523,7 @@ td .ex-sets{flex-wrap:nowrap}
   .top-act{width:100%}
   .top-act .btn{flex:1;padding:6px 10px;font-size:13.5px}
 }
+.rep-opt{display:flex;gap:8px;align-items:center;font-size:13.5px;color:var(--ink-2);margin:8px 0 2px}
 /* Bandeau Dropbox réduit à une ligne quand tout est à jour */
 .dbx.compact{padding:6px 10px;font-size:13px;margin-bottom:10px}
 .dbx.compact .dbx-msg{flex:1 1 auto}
@@ -1186,8 +1187,20 @@ var ST = (function () {
     if (/dumbbell|cable|smithMachine/.test(e) || n.indexOf("haltere") !== -1 || n.indexOf("smith") !== -1) return "side";
     return "total";
   }
+  // Règles définitives données par l'utilisateur (prioritaires sur le fichier et les suppositions)
+  function fixedMode(name) {
+    var n = SR.norm(name), has = function (t) { return n.indexOf(t) !== -1; };
+    if (has("squat") && has("pendul")) return "side";
+    if (has("presse") && (has("une jambe") || has("1 jambe") || has("unilateral"))) return "side";
+    if (has("mollet") && (has("extension") || has("elevation"))) return "total";
+    if ((has("extension") && has("jambe")) || has("leg extension")) return "total";
+    if (has("elevation frontale") && (has("un bras") || has("1 bras")) && has("poulie")) return "total";
+    return null;
+  }
   function modeOf(name, eq, overrides, explicit) {
     if (overrides && overrides[name]) return { m: overrides[name], src: "set" };
+    var fx = fixedMode(name);
+    if (fx) return { m: fx, src: "file" };
     if (explicit) return { m: explicit, src: "file" };
     if (KNOWN[name]) return { m: KNOWN[name], src: "file" };
     return { m: guessMode(name, eq), src: "guess" };
@@ -3649,17 +3662,54 @@ var BODY = (function () {
   }
 
   /* ---------- Historique : semaines et bilan en texte ---------- */
-  function reportText(w) {
-    var m = state.model, C = state.cfg, H = state.history, L = [];
-    var inW = function (x) { return x.day >= w && x.day < w + 7; };
+  // Consignes pour l'IA, adaptées à la phase en cours
+  function aiPrompt(isAll) {
+    var C = state.cfg, ph = C.phase, P = [];
+    P.push("CONSIGNES POUR L'IA");
+    P.push("Tu es un coach expert en musculation orientée hypertrophie et en nutrition sportive, rigoureux et factuel. Analyse " + (isAll ? "toute la période" : "la semaine") + " de données ci-dessous (export de mon application de suivi : repas et poids depuis Apple Santé, dépense mesurée par une montre, séances GymBook série par série).");
+    if (ph === "seche") P.push("Je suis en SÈCHE : l'objectif est de perdre du gras en gardant un maximum de muscle. Repères : perte de 0,5 à 1 % du poids par semaine, protéines 2 à 2,5 g/kg, garder des charges lourdes et l'intensité, limiter la perte de force ; une baisse de performance répétée sur plusieurs exercices est un signal de déficit trop fort ou de fatigue.");
+    else if (ph === "masse") P.push("Je suis en PRISE DE MASSE : l'objectif est de construire du muscle en limitant la prise de gras. Repères : prise de 0,25 à 0,5 % du poids par semaine, protéines 1,6 à 2,2 g/kg, surcharge progressive régulière (charges ou répétitions en hausse) sur les exercices principaux.");
+    else P.push("Je suis en MAINTIEN : l'objectif est de stabiliser le poids (variation de moins de 0,25 % par semaine) tout en continuant à progresser à l'entraînement. Repères : protéines 1,6 à 2,2 g/kg, surcharge progressive.");
+    P.push("");
+    P.push("Réponds en français, de façon structurée et concise, avec des chiffres :");
+    P.push("1. Synthèse en 3 phrases : ce qui va bien, ce qui coince, la priorité.");
+    P.push("2. Nutrition : calories moyennes face à l'objectif et à la dépense réelle estimée, protéines en g/kg, glucides, lipides, fibres, régularité d'un jour à l'autre ; signale les jours qui s'écartent nettement.");
+    P.push("3. Poids : tendance face au repère de ma phase (lisse les variations d'eau d'un jour à l'autre). Dis si je dois ajuster mes calories et de combien, en kcal par jour.");
+    P.push("4. Entraînement, exercice par exercice : progression ou stagnation (charge, répétitions, 1RM estimé), régressions, exercices à remplacer ou à garder. Juge la surcharge progressive et la plage de répétitions (6 à 15 pour l'hypertrophie).");
+    P.push("5. Volume par muscle : compare les séries par semaine au repère de 10 à 20 séries directes, repère les muscles sous ou sur-entraînés, l'équilibre poussée/tirage et haut/bas du corps, la fréquence (idéalement 2 fois par semaine par muscle).");
+    P.push("6. Récupération et fatigue : croise les performances avec le déficit, le sommeil n'étant pas fourni.");
+    P.push("7. Plan pour la semaine prochaine : 3 à 6 actions concrètes et chiffrées (charges et répétitions visées sur les exercices clés, calories et protéines, ajustements de volume).");
+    P.push("Règles : « (kg par côté) » signifie que la charge est par haltère ou par côté (le total soulevé est le double) ; sinon la charge est la charge totale. Ne compare pas des exercices différents entre eux. N'invente pas de données : si une information manque (fibres vides, jours sans pesée…), dis-le et précise ce qu'il faudrait mesurer.");
+    P.push("");
+    P.push("========== DONNÉES ==========");
+    return P.join("\n");
+  }
+  // a = premier jour, b = lendemain du dernier jour ; isAll : toute la période
+  function reportText(a, b, isAll, withPrompt) {
+    var m = state.model, C = state.cfg, H = state.history, L = [], w = a, nd = b - a;
+    var inW = function (x) { return x.day >= a && x.day < b; };
     var days = m.days.filter(inW), ses = m.sessions.filter(inW), food = days.filter(function (d) { return d.kcal !== null; });
-    var prevW = avg(m.days.filter(function (x) { return x.day >= w - 7 && x.day < w; }), "weight"), wA = avg(days, "weight"), lw = lastWeightBefore(m, w + 6);
-    var bals = days.filter(function (d) { return d.balance !== null; }), R = rateInfo(Math.min(w + 6, bounds(m).max), 28);
-    L.push("Bilan de la semaine S" + isoWeek(w) + ", du lundi " + dShort(w) + " au dimanche " + dFull(w + 6));
+    var prevW = isAll ? null : avg(m.days.filter(function (x) { return x.day >= w - 7 && x.day < w; }), "weight"), wA = avg(days, "weight"), lw = lastWeightBefore(m, b - 1);
+    var bals = days.filter(function (d) { return d.balance !== null; }), R = rateInfo(Math.min(b - 1, bounds(m).max), isAll ? Math.max(nd, 7) : 28);
+    if (withPrompt) { L.push(aiPrompt(isAll)); L.push(""); }
+    if (isAll) L.push("Bilan de toute la période, du " + dFull(a) + " au " + dFull(b - 1) + " (" + nd + " jours, " + fmt(nd / 7, 1) + " semaines)");
+    else L.push("Bilan de la semaine S" + isoWeek(w) + ", du lundi " + dShort(w) + " au dimanche " + dFull(w + 6));
     L.push("Phase : " + PHASES[C.phase].toLowerCase() + ". Objectifs par jour : " + fmt(C.kcal) + " kcal, " + fmt(C.prot) + " g de protéines, " + fmt(C.fiber) + " g de fibres." + (C.goal ? " Poids visé : " + fmt(C.goal, 1) + " kg." : ""));
     var ctx = String((store.meta && store.meta.contexte) || "").split(/\n+/).map(function (l) { return l.trim(); }).filter(Boolean);
     if (ctx.length) { L.push(""); L.push("Contexte"); ctx.forEach(function (l) { L.push("- " + l); }); }
-    L.push(""); L.push("Nutrition (" + food.length + " " + plural(food.length, "jour") + " de repas sur 7)");
+    if (isAll) {
+      L.push(""); L.push("Résumé par semaine");
+      for (var wk = SR.monday(a); wk < b; wk += 7) {
+        var dd = m.days.filter(function (x) { return x.day >= wk && x.day < wk + 7; }), ss = m.sessions.filter(function (x) { return x.day >= wk && x.day < wk + 7; });
+        var q = [];
+        if (avg(dd, "kcal") !== null) q.push(fmt(avg(dd, "kcal")) + " kcal/j, P " + fmt(avg(dd, "prot")) + " g/j");
+        if (avg(dd, "burn") !== null) q.push("dépense " + fmt(avg(dd, "burn")) + " kcal/j");
+        if (avg(dd, "weight") !== null) q.push("poids moyen " + fmt(avg(dd, "weight"), 2) + " kg");
+        q.push(ss.length + " " + plural(ss.length, "séance") + ", " + sum(ss, "doneSets") + " séries, " + tonnes(sum(ss, "volume")));
+        L.push("- S" + isoWeek(wk) + " (du " + dShort(wk) + " au " + dShort(wk + 6) + ") : " + q.join(" ; "));
+      }
+    }
+    L.push(""); L.push("Nutrition (" + food.length + " " + plural(food.length, "jour") + " de repas sur " + nd + ")");
     if (food.length) {
       var kA = avg(days, "kcal"), pA = avg(days, "prot");
       L.push("- Calories : " + fmt(kA) + " kcal par jour en moyenne, écart à l'objectif " + sfmt(kA - C.kcal));
@@ -3677,8 +3727,8 @@ var BODY = (function () {
       L.push("  " + dDow(d.day) + " : " + p.join(" ; "));
     });
     L.push(""); L.push("Poids");
-    if (wA !== null) L.push("- Moyenne de la semaine : " + fmt(wA, 2) + " kg" + (prevW !== null ? " (" + sfmt(wA - prevW, 2) + " kg par rapport à la semaine d'avant)" : "") + (m.start ? ", départ à " + fmt(m.start.weight, 2) + " kg" : ""));
-    else L.push("- Aucune pesée cette semaine");
+    if (wA !== null) L.push("- Moyenne " + (isAll ? "de la période" : "de la semaine") + " : " + fmt(wA, 2) + " kg" + (prevW !== null ? " (" + sfmt(wA - prevW, 2) + " kg par rapport à la semaine d'avant)" : "") + (m.start ? ", départ à " + fmt(m.start.weight, 2) + " kg" : ""));
+    else L.push(isAll ? "- Aucune pesée sur la période" : "- Aucune pesée cette semaine");
     if (R) L.push("- Tendance sur " + R.n + " pesées du " + dShort(R.from) + " au " + dShort(R.to) + " : " + sfmt(R.perWeek, 2) + " kg par semaine, soit " + fmt(Math.abs(R.pct), 1) + " % du poids");
     if (R && R.tdee) L.push("- Dépense réelle estimée d'après les pesées et les repas : " + fmt(Math.round(R.tdee / 10) * 10) + " kcal par jour" + (R.watch ? " (montre : " + fmt(Math.round(R.watch / 10) * 10) + ")" : ""));
     L.push(""); L.push("Séances (" + ses.length + ")");
@@ -3692,23 +3742,33 @@ var BODY = (function () {
         L.push("  " + e.name + (e.side ? " (kg par côté)" : "") + " : " + e.sets.map(function (z) { return (z.w === null ? "–" : w1(z.w)) + "×" + (z.reps === null ? "–" : z.reps) + (z.ds ? " DS" : ""); }).join(", ") + (x.length ? " [" + x.join(" ; ") + "]" : ""));
       });
     });
-    if (!ses.length) L.push("Aucune séance cette semaine.");
+    if (!ses.length) L.push(isAll ? "Aucune séance sur la période." : "Aucune séance cette semaine.");
+    var mc = muscleCounts(m.sets.filter(inW)).filter(function (x) { return x.p || x.s; }), wkN = Math.max(nd / 7, 1);
+    if (mc.length) {
+      L.push(""); L.push("Volume par muscle" + (isAll ? " (moyenne par semaine)" : "") + " : séries directes (muscle principal) + séries indirectes (muscle secondaire, comptées pour moitié)");
+      mc.map(function (x) { return { n: x.name, p: x.p / wkN, s: x.s / wkN, e: (x.p + x.s / 2) / wkN }; }).sort(function (x, y) { return y.e - x.e; }).forEach(function (x) {
+        L.push("- " + x.n + " : " + fmt(x.e, 1) + " séries effectives (" + fmt(x.p, 1) + " directes, " + fmt(x.s, 1) + " indirectes)");
+      });
+    }
     L.push(""); L.push("Notes : séries d'échauffement exclues, DS = drop set, 1RM estimé par la formule d'Epley sur le poids saisi, dépense mesurée par une montre Garmin.");
     return L.join("\n");
   }
-  var repWeek = null;
+  var repWeek = null, repPrompt = true;
   function historyExtras(sl) {
     var el = $("#p-historique"), m = state.model, b = m ? bounds(m) : null;
     if (!sl || !b) return;
     var ws = []; for (var w = SR.monday(b.max); w >= SR.monday(b.min); w -= 7) ws.push(w);
-    if (ws.indexOf(repWeek) === -1) repWeek = ws.length > 1 && b.max - ws[0] < 3 ? ws[1] : ws[0];
-    var opts = ws.map(function (x) { return '<option value="' + x + '"' + (x === repWeek ? " selected" : "") + '>S' + isoWeek(x) + ", du " + dShort(x) + " au " + dShort(x + 6) + '</option>'; }).join("");
-    el.insertAdjacentHTML("afterbegin", '<div id="p-semaines"></div>' + card("report", "Bilan d'une semaine en texte", "À coller dans une conversation avec Claude pour faire le point : nutrition jour par jour, poids, séances série par série.", "",
-      '<div class="hist-top"><label class="sr" for="repSel">Semaine</label><select id="repSel" class="select">' + opts + '</select><button type="button" class="btn btn-sm" id="repCopy">Copier le texte</button></div><textarea class="ta rep" id="repText" readonly aria-label="Bilan de la semaine"></textarea>'));
+    if (repWeek !== "all" && ws.indexOf(repWeek) === -1) repWeek = ws.length > 1 && b.max - ws[0] < 3 ? ws[1] : ws[0];
+    var opts = '<option value="all"' + (repWeek === "all" ? " selected" : "") + '>Toute la période (' + dShort(b.min) + " au " + dShort(b.max) + ')</option>' +
+      ws.map(function (x) { return '<option value="' + x + '"' + (x === repWeek ? " selected" : "") + '>S' + isoWeek(x) + ", du " + dShort(x) + " au " + dShort(x + 6) + '</option>'; }).join("");
+    el.insertAdjacentHTML("afterbegin", '<div id="p-semaines"></div>' + card("report", "Bilan en texte pour une IA", "À coller dans une conversation avec une IA (Claude, ChatGPT…) : consignes d'analyse adaptées à ta phase, nutrition jour par jour, poids, séances série par série, volume par muscle.", "",
+      '<div class="hist-top"><label class="sr" for="repSel">Semaine</label><select id="repSel" class="select">' + opts + '</select><button type="button" class="btn btn-sm" id="repCopy">Copier le texte</button></div>' +
+      '<label class="rep-opt"><input type="checkbox" id="repPrompt"' + (repPrompt ? " checked" : "") + '> Inclure les consignes d\'analyse pour l\'IA</label><textarea class="ta rep" id="repText" readonly aria-label="Bilan de la semaine"></textarea>'));
     renderWeeks(sl);
-    var ta = $("#repText"), fill = function () { ta.value = reportText(repWeek); };
+    var ta = $("#repText"), fill = function () { ta.value = repWeek === "all" ? reportText(b.min, b.max + 1, true, repPrompt) : reportText(repWeek, repWeek + 7, false, repPrompt); };
     fill();
-    $("#repSel").onchange = function () { repWeek = +this.value; fill(); };
+    $("#repSel").onchange = function () { repWeek = this.value === "all" ? "all" : +this.value; fill(); };
+    $("#repPrompt").onchange = function () { repPrompt = this.checked; fill(); };
     $("#repCopy").onclick = function () {
       var done = function () { toast("Bilan copié."); }, manual = function () { ta.focus(); ta.select(); toast("Texte sélectionné : copie-le avec Ctrl+C ou Cmd+C."); };
       try { navigator.clipboard.writeText(ta.value).then(done, manual); } catch (e) { manual(); }
@@ -3884,6 +3944,34 @@ var BODY = (function () {
   var canUse = window.claude && typeof window.claude.use === "function";
   Promise.resolve(canUse ? window.claude.use("db") : null).then(function (db) { if (db) startDb(db); else startLocal(); }, startLocal);
   if (canUse) Promise.resolve(window.claude.use("downloads")).then(function (d) { dlApi = d || null; if (state.tab === "reglages") renderAll(); }, function () { dlApi = null; });
+  else dlApi = browserDownloads();
+  // Téléchargement natif : feuille de partage sur iPhone/iPad (Enregistrer dans Fichiers…), sinon téléchargement classique
+  function browserDownloads() {
+    var ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    function anchor(o) {
+      var url = URL.createObjectURL(o.data), a = document.createElement("a");
+      a.href = url; a.download = o.filename; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+      return Promise.resolve({ status: "saved" });
+    }
+    return {
+      save: function (o) {
+        var type = /\.xlsx$/i.test(o.filename) ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : (o.data.type || "application/octet-stream");
+        var file; try { file = new File([o.data], o.filename, { type: type }); } catch (e) { file = null; }
+        if (!(ios && file && navigator.canShare && navigator.canShare({ files: [file] }))) return anchor(o);
+        // Le partage doit partir d'un toucher : on demande une confirmation une fois le fichier prêt
+        return new Promise(function (res, rej) {
+          askConfirm("Fichier prêt", o.filename + " : choisis « Enregistrer dans Fichiers » ou l'app où l'envoyer.", "Enregistrer ou partager", function () {
+            navigator.share({ files: [file] }).then(function () { res({ status: "saved" }); }, function (e) {
+              if (e && e.name === "AbortError") rej({ code: "declined" }); else anchor(o).then(res, rej);
+            });
+          });
+          var no = $("#dlgNo"), close = no.onclick;
+          no.onclick = function () { close(); rej({ code: "declined" }); };
+        });
+      }
+    };
+  }
   setTimeout(function () {
     if (backend.kind === "db" && !(ready.meta && ready.modes && ready.muscles && ready.repas && ready.seances)) toast("Les données mettent du temps à arriver. Si rien ne s'affiche, recharge la page.", 8000);
   }, 12000);
