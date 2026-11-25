@@ -28,6 +28,9 @@ jobs:
           mkdir _site
           cp index.html dropbox-sync.js sw.js manifest.webmanifest _site/
           cp -r icons _site/
+          # Version test (nouvelle direction artistique), servie sous /beta/
+          mkdir _site/beta
+          cp beta/index.html beta/dropbox-sync.js beta/glass.css beta/motion.js beta/manifest.webmanifest _site/beta/
           touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

@@ -60,3 +60,21 @@ affiche un code que tu colles dans l'app.
 
 Toute modification poussée sur `main` est republiée automatiquement par GitHub Pages
 (Settings → Pages → Source : GitHub Actions) en une à deux minutes.
+
+## Version test : nouvelle direction artistique
+
+Une version test est publiée à part, sans toucher à la version officielle :
+**https://2jh7gnpt6h-netizen.github.io/Suivientrainement/beta/**
+
+- Même code, mêmes données, mêmes réglages : seule l'apparence change
+  (`beta/glass.css` pour le verre, `beta/motion.js` pour le mouvement).
+- Dans un même navigateur, la version test et la version officielle partagent
+  les données et la connexion Dropbox (même site).
+- Pour se connecter à Dropbox depuis la version test dans un navigateur où l'on
+  n'est pas encore connecté : soit « Connexion par code », soit ajouter
+  `https://2jh7gnpt6h-netizen.github.io/Suivientrainement/beta/` dans les
+  Redirect URIs de l'app Dropbox.
+- Pas de service worker propre : celui de la version officielle couvre ce dossier.
+- Mise en service officielle : remplacer `index.html` et `dropbox-sync.js` par ceux
+  de `beta/` (en remettant l'enregistrement du service worker et les chemins
+  `icons/`), ajouter `glass.css` et `motion.js`, puis supprimer le dossier `beta/`.
