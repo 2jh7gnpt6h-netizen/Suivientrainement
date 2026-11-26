@@ -66,8 +66,17 @@ Toute modification poussée sur `main` est republiée automatiquement par GitHub
 Une version test est publiée à part, sans toucher à la version officielle :
 **https://2jh7gnpt6h-netizen.github.io/Suivientrainement/beta/**
 
-- Même code, mêmes données, mêmes réglages : seule l'apparence change
-  (`beta/glass.css` pour le verre, `beta/motion.js` pour le mouvement).
+- Mêmes données, mêmes réglages. L'apparence change (`beta/glass.css` pour le
+  verre, `beta/motion.js` pour le mouvement) et quelques vues sont repensées :
+  - **Prochaine séance en direct** (en tête de l'onglet Séances, résumée dans le
+    Bilan) : pour chaque exercice, série par série, la dernière fois → l'objectif
+    (une rep de plus sur une série, ou la charge à monter), record en vue,
+    plateau, repos. Chaque exercice se coche pendant la séance ; les coches restent
+    sur l'appareil jusqu'à minuit et la séance en cours revient à la réouverture.
+  - **Journal des séances** : verdict par exercice par rapport à la fois d'avant
+    (+5 kg, +2 reps, pareil…) et séries fléchées en vert ou en rouge.
+  - Records regroupés par exercice, progression par exercice lisible au téléphone,
+    valeurs moyennes en petites tuiles, balayage gauche/droite pour changer de période.
 - Dans un même navigateur, la version test et la version officielle partagent
   les données et la connexion Dropbox (même site).
 - Pour se connecter à Dropbox depuis la version test dans un navigateur où l'on

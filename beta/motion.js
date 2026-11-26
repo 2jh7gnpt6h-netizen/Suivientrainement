@@ -118,7 +118,7 @@
       if (a) a.onfinish = function () { s.remove(); }; else s.remove();
     }, { passive: true });
     document.addEventListener("click", function (e) {
-      var t = e.target.closest && e.target.closest(".stats>.stat,.cell.has,.nx,.hero-facts>div,.at");
+      var t = e.target.closest && e.target.closest(".stats>.stat,.cell.has,.hero-facts>div,.at");
       if (!t) return;
       anim(t, [{ transform: "scale(1)" }, { transform: "scale(1.04,.96)" }, { transform: "scale(.98,1.025)" }, { transform: "scale(1)" }], { duration: 480, easing: "ease-out", fill: "none" });
     });
@@ -237,7 +237,7 @@
   /* ---------- Contenu d'un bloc qui entre ---------- */
   var COUNT = ".hero-v,.stat-v,.hero-facts b,.at-v";
   var GROW = ".adh-t span,.htrack .seg-p,.htrack .seg-s,.mbtn .mt span,.wd-t span,.bal-t span,.lgauge i,.dd-mac";
-  var LIST = ".facts li,.nx,.at";
+  var LIST = ".facts li,.lv-ex,.lv-ml li,.at";
   function inner(b, d, key, soft) {
     $$(".chart", b).forEach(function (ch) { var s = ch.querySelector("svg"); if (s) svgEnter(s, d, soft); ch._mw = ch._w; });
     $$(COUNT, b).slice(0, 9).forEach(function (el, i) { count(el, d + 100 + i * 70, soft ? 700 : 1000, key + "|" + i); });
