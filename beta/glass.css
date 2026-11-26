@@ -1,14 +1,15 @@
 /* =====================================================================
    Direction artistique « liquid glass » — version test
-   Ce fichier ne change que l'apparence : structure, contenus et logique
-   de la page sont ceux de la version officielle. Le mouvement (fond qui
-   dérive, reflets, indicateur liquide, entrées, compteurs) est dans
-   motion.js ; sans lui, la page reste identique, simplement immobile.
+   Ce fichier ne change que l'apparence. Le mouvement est dans motion.js.
+
+   Fluidité : le flou en temps réel (backdrop-filter) est réservé à ce qui
+   flotte au-dessus du contenu (barres, infobulles, messages). Les cartes
+   gardent l'aspect verre (voile translucide, liseré, reflet) sans flou :
+   au-dessus d'un fond déjà doux, le résultat est le même et le téléphone
+   n'a plus à recalculer un flou par carte à chaque image.
    ===================================================================== */
 
-/* Propriétés animables pour les reflets du verre */
-@property --lx { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
-@property --ly { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+/* Projecteur sous la souris (ordinateur uniquement, voir motion.js) */
 @property --la { syntax: "<number>"; inherits: false; initial-value: 0; }
 @property --px { syntax: "<length>"; inherits: false; initial-value: -400px; }
 @property --py { syntax: "<length>"; inherits: false; initial-value: -400px; }
@@ -23,24 +24,25 @@
   --hl:#2A78D6; --hl-ink:#FFFFFF; --cal-mid:rgba(15,23,32,.075);
   --d1:#2A78D6; --d2:#EB6834; --d3:#1BAF7A; --d4:#11904C; --d5:#7F8A96;
   --good:#16814A; --warn:#A35F00; --bad:#C2372C;
-  --tip-bg:rgba(255,255,255,.80); --tip-ink:#0F1720; --tip-muted:#5A6672;
+  --tip-bg:rgba(255,255,255,.82); --tip-ink:#0F1720; --tip-muted:#5A6672;
   --body-base:#AEB7C2; --body-idle:#D3DAE2; --heat-1:#F6D2BC; --heat-2:#EE9A6E; --heat-3:#E0561F; --heat-4:#8F2C08;
   --f:"Figtree",-apple-system,"SF Pro Text","Segoe UI",Roboto,sans-serif;
   --fd:"Geologica",-apple-system,"SF Pro Display","Segoe UI",Roboto,sans-serif;
   --r:14px;
-  --glass:rgba(255,255,255,.46); --glass-2:rgba(255,255,255,.70);
+  --glass:rgba(255,255,255,.52); --glass-2:rgba(255,255,255,.74);
   --rim-a:rgba(255,255,255,.96); --rim-b:rgba(255,255,255,.14);
   --rim-c1:rgba(150,195,255,.55); --rim-c2:rgba(255,180,215,.45);
-  --sheen:rgba(255,255,255,.44);
+  --sheen:rgba(255,255,255,.5);
   --shadow:rgba(30,50,80,.16);
   --ring:#FFFFFF;
   --acc:#2A78D6;
   --acc-grad:linear-gradient(135deg,#4FA0FF 0%,#2A73E0 52%,#4153DD 100%);
   --acc-ink:#FFFFFF;
+  --ok-grad:linear-gradient(90deg,#45C98E,#16A36A);
+  --over-grad:linear-gradient(90deg,#FFB36B,#EB6834);
   --ind-bg:linear-gradient(180deg,rgba(255,255,255,.96),rgba(255,255,255,.64));
   --ind-hi:#FFFFFF;
-  --bar-bg:linear-gradient(165deg,rgba(255,255,255,.82) -20%,rgba(255,255,255,.58) 60%);
-  --blur:24px;
+  --bar-bg:linear-gradient(165deg,rgba(255,255,255,.84) -20%,rgba(255,255,255,.6) 60%);
   --spring:cubic-bezier(.34,1.56,.64,1);
   --ease-out:cubic-bezier(.2,.8,.2,1);
   color-scheme:light;
@@ -60,9 +62,9 @@
     --hl:#3987E5; --hl-ink:#FFFFFF; --cal-mid:rgba(255,255,255,.08);
     --d1:#3987E5; --d2:#D95926; --d3:#199E70; --d4:#2E9E3A; --d5:#8F9A95;
     --good:#4CB97A; --warn:#E0A33A; --bad:#EF6A5F;
-    --tip-bg:rgba(24,31,40,.80); --tip-ink:#EEF2F6; --tip-muted:#9AA5B1;
+    --tip-bg:rgba(24,31,40,.84); --tip-ink:#EEF2F6; --tip-muted:#9AA5B1;
     --body-base:#2A313A; --body-idle:#4A5360; --heat-1:#F2C3A6; --heat-2:#E88B5A; --heat-3:#D95926; --heat-4:#9A3410;
-    --glass:rgba(255,255,255,.065); --glass-2:rgba(30,38,48,.74);
+    --glass:rgba(255,255,255,.07); --glass-2:rgba(34,43,55,.78);
     --rim-a:rgba(255,255,255,.38); --rim-b:rgba(255,255,255,.04);
     --rim-c1:rgba(120,170,255,.30); --rim-c2:rgba(255,150,200,.22);
     --sheen:rgba(255,255,255,.09);
@@ -72,7 +74,7 @@
     --acc-grad:linear-gradient(135deg,#5AA7FF 0%,#3274E6 52%,#4B57E6 100%);
     --ind-bg:linear-gradient(180deg,rgba(255,255,255,.20),rgba(255,255,255,.08));
     --ind-hi:rgba(255,255,255,.42);
-    --bar-bg:linear-gradient(165deg,rgba(40,50,64,.86) -20%,rgba(22,29,38,.66) 60%);
+    --bar-bg:linear-gradient(165deg,rgba(40,50,64,.88) -20%,rgba(22,29,38,.7) 60%);
     color-scheme:dark;
   }
 }
@@ -85,9 +87,9 @@
   --hl:#3987E5; --hl-ink:#FFFFFF; --cal-mid:rgba(255,255,255,.08);
   --d1:#3987E5; --d2:#D95926; --d3:#199E70; --d4:#2E9E3A; --d5:#8F9A95;
   --good:#4CB97A; --warn:#E0A33A; --bad:#EF6A5F;
-  --tip-bg:rgba(24,31,40,.80); --tip-ink:#EEF2F6; --tip-muted:#9AA5B1;
+  --tip-bg:rgba(24,31,40,.84); --tip-ink:#EEF2F6; --tip-muted:#9AA5B1;
   --body-base:#2A313A; --body-idle:#4A5360; --heat-1:#F2C3A6; --heat-2:#E88B5A; --heat-3:#D95926; --heat-4:#9A3410;
-  --glass:rgba(255,255,255,.065); --glass-2:rgba(30,38,48,.74);
+  --glass:rgba(255,255,255,.07); --glass-2:rgba(34,43,55,.78);
   --rim-a:rgba(255,255,255,.38); --rim-b:rgba(255,255,255,.04);
   --rim-c1:rgba(120,170,255,.30); --rim-c2:rgba(255,150,200,.22);
   --sheen:rgba(255,255,255,.09);
@@ -97,22 +99,22 @@
   --acc-grad:linear-gradient(135deg,#5AA7FF 0%,#3274E6 52%,#4B57E6 100%);
   --ind-bg:linear-gradient(180deg,rgba(255,255,255,.20),rgba(255,255,255,.08));
   --ind-hi:rgba(255,255,255,.42);
-  --bar-bg:linear-gradient(165deg,rgba(40,50,64,.86) -20%,rgba(22,29,38,.66) 60%);
+  --bar-bg:linear-gradient(165deg,rgba(40,50,64,.88) -20%,rgba(22,29,38,.7) 60%);
   color-scheme:dark;
 }
 
 /* ---------- Base ---------- */
 .mo-wait .top,.mo-wait .bar,.mo-wait main{opacity:0}
-.chipb,.pnav,.mbtn,.ses-h{position:relative;overflow:hidden}
 html{background:var(--bg)}
 body{background:transparent;font-family:var(--f);color:var(--ink);letter-spacing:.003em}
-body::before{background:color-mix(in srgb,var(--bg) 62%,transparent);-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%)}
+body::before{background:color-mix(in srgb,var(--bg) 88%,transparent)}
 ::selection{background:color-mix(in srgb,var(--acc) 28%,transparent)}
 :focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 input[type="checkbox"],input[type="radio"]{accent-color:var(--acc)}
 .muted,.note,.card-sub,.empty,.label-foot,.hero-l{color:var(--muted)}
+.chipb,.pnav,.mbtn,.ses-h{position:relative;overflow:hidden}
 
-/* ---------- Fond : taches de couleur douces (motion.js les fait dériver) ---------- */
+/* ---------- Fond : taches de couleur douces, fixes (dérive lente sur ordinateur, voir motion.js) ---------- */
 .bg{position:fixed;inset:-10%;z-index:-1;pointer-events:none;overflow:hidden;
   background:
     radial-gradient(36% 26% at 10% 6%, var(--b1) 0%, transparent 70%),
@@ -121,42 +123,46 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--acc)}
     radial-gradient(38% 28% at 6% 86%, var(--b4) 0%, transparent 70%),
     radial-gradient(28% 20% at 46% 38%, var(--b5) 0%, transparent 72%);
 }
-.bg.liquid{background:none}
+.bg.liquid{background:
+    radial-gradient(36% 26% at 10% 6%, var(--b1) 0%, transparent 70%),
+    radial-gradient(28% 20% at 46% 38%, var(--b5) 0%, transparent 72%)}
 .bg .blob{position:absolute;inset:0;will-change:transform}
-.bg .b1{background:radial-gradient(36% 26% at 10% 6%, var(--b1) 0%, transparent 70%)}
 .bg .b2{background:radial-gradient(34% 24% at 94% 16%, var(--b2) 0%, transparent 70%)}
 .bg .b3{background:radial-gradient(42% 30% at 82% 60%, var(--b3) 0%, transparent 70%)}
 .bg .b4{background:radial-gradient(38% 28% at 6% 86%, var(--b4) 0%, transparent 70%)}
-.bg .b5{background:radial-gradient(28% 20% at 46% 38%, var(--b5) 0%, transparent 72%)}
-.bg .b6{background:radial-gradient(30% 22% at 64% 92%, var(--b2) 0%, transparent 70%);opacity:.8}
-/* grain très léger : donne de la matière au verre */
-.bg::after{content:"";position:absolute;inset:0;opacity:.07;mix-blend-mode:overlay;
+.bg::after{content:"";position:absolute;inset:0;opacity:.035;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
 
 /* =====================================================================
-   Verre liquide : un seul matériau pour tous les panneaux
+   Verre : un seul matériau pour tous les panneaux
    ===================================================================== */
-.card,.hero,.label,.stats>.stat,.panel>.sessions>.ses,.start,.tabs,.period,.dlg-in,.drop-in{
+.card,.hero,.label,.stats>.stat,.panel>.sessions>.ses,.start,.dlg-in,.drop-in,.tabs,.period{
   isolation:isolate;border:0;border-radius:26px;
   background:linear-gradient(165deg,var(--glass-2) -40%,var(--glass) 45%);
-  -webkit-backdrop-filter:blur(var(--blur)) saturate(185%);backdrop-filter:blur(var(--blur)) saturate(185%);
-  box-shadow:inset 0 1px 0 var(--rim-a),inset 0 -1px 0 var(--rim-b),0 1px 2px var(--shadow),0 18px 44px -20px var(--shadow);
+  box-shadow:inset 0 1px 0 var(--rim-a),inset 0 -1px 0 var(--rim-b),0 1px 2px var(--shadow),0 18px 44px -22px var(--shadow);
 }
-.card,.hero,.label,.stats>.stat,.panel>.sessions>.ses,.start,.period,.dlg-in,.drop-in{position:relative}
-/* reflet : suit le défilement (--lx, --ly) et le doigt (--px, --py, --la) */
-.card::before,.hero::before,.label::before,.stats>.stat::before,.panel>.sessions>.ses::before,.start::before,.tabs::before,.period::before,.dlg-in::before,.drop-in::before{
+.card,.hero,.label,.stats>.stat,.panel>.sessions>.ses,.start,.dlg-in,.drop-in,.period{position:relative}
+/* reflet fixe en haut à gauche + projecteur sous la souris (--la vaut 0 au toucher) */
+.card::before,.hero::before,.label::before,.stats>.stat::before,.panel>.sessions>.ses::before,.start::before,.dlg-in::before,.drop-in::before,.tabs::before,.period::before{
   content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1;
-  background:
-    radial-gradient(130% 70% at var(--lx) var(--ly), var(--sheen), transparent 55%),
-    radial-gradient(260px circle at var(--px) var(--py), color-mix(in srgb,#fff calc(var(--la) * 22%),transparent), transparent 70%);
-  transition:--la .45s var(--ease-out),--lx 1.2s var(--ease-out),--ly 1.2s var(--ease-out);
+  background:radial-gradient(130% 70% at 0% 0%, var(--sheen), transparent 55%);
+}
+@media (hover: hover) and (pointer: fine){
+  .card::before,.hero::before,.label::before,.stats>.stat::before,.panel>.sessions>.ses::before,.start::before{
+    background:
+      radial-gradient(130% 70% at 0% 0%, var(--sheen), transparent 55%),
+      radial-gradient(260px circle at var(--px) var(--py), color-mix(in srgb,#fff calc(var(--la) * 22%),transparent), transparent 70%);
+    transition:--la .45s var(--ease-out);
+  }
 }
 /* liseré : lumière blanche avec une pointe irisée sur les arêtes */
-.card::after,.hero::after,.label::after,.stats>.stat::after,.panel>.sessions>.ses::after,.start::after,.tabs::after,.period::after,.dlg-in::after,.drop-in::after{
+.card::after,.hero::after,.label::after,.stats>.stat::after,.panel>.sessions>.ses::after,.start::after,.dlg-in::after,.drop-in::after,.tabs::after,.period::after{
   content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
   background:linear-gradient(140deg,var(--rim-a),var(--rim-c1) 18%,var(--rim-b) 36%,transparent 55%,var(--rim-b) 72%,var(--rim-c2) 86%,var(--rim-a));
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
 }
+/* barres flottantes : vrai flou, elles passent au-dessus du contenu */
+.tabs,.period{background:var(--bar-bg);-webkit-backdrop-filter:blur(26px) saturate(190%);backdrop-filter:blur(26px) saturate(190%)}
 
 /* ---------- En-tête ---------- */
 .top{position:relative}
@@ -169,10 +175,9 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--acc)}
 /* ---------- Boutons ---------- */
 .btn{border:0;border-radius:999px;padding:9px 17px;font-weight:650;font-size:14px;color:var(--acc-ink);background:var(--acc-grad);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.38),inset 0 -1px 0 rgba(0,0,0,.14),0 1px 2px var(--shadow),0 10px 22px -12px var(--acc);
-  position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent;transition:transform .6s var(--spring),filter .2s,box-shadow .3s}
+  position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent;transition:transform .6s var(--spring),filter .2s}
 .btn:hover{opacity:1;filter:brightness(1.07)}
-.btn-ghost{color:var(--ink);background:var(--glass-2);-webkit-backdrop-filter:blur(16px) saturate(170%);backdrop-filter:blur(16px) saturate(170%);
-  box-shadow:inset 0 1px 0 var(--rim-a),0 1px 2px var(--shadow),0 8px 20px -12px var(--shadow)}
+.btn-ghost{color:var(--ink);background:var(--glass-2);box-shadow:inset 0 1px 0 var(--rim-a),0 1px 2px var(--shadow),0 8px 20px -12px var(--shadow)}
 .btn-ghost:hover{background:var(--glass-2);filter:brightness(1.04)}
 .btn-ghost[aria-pressed="true"]{background:var(--acc-grad);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.38),0 8px 20px -12px var(--acc)}
 .btn-sm{padding:6px 13px;font-size:13px}
@@ -184,7 +189,7 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--acc)}
 
 /* ---------- Bandeau Dropbox ---------- */
 .dbx{border:0;border-radius:20px;padding:10px 14px 10px 32px;position:relative;margin:0 0 12px;
-  background:linear-gradient(165deg,var(--glass-2) -40%,var(--glass) 45%);-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%);
+  background:linear-gradient(165deg,var(--glass-2) -40%,var(--glass) 45%);
   box-shadow:inset 0 1px 0 var(--rim-a),0 1px 2px var(--shadow),0 12px 28px -18px var(--shadow);color:var(--ink-2);font-size:13.5px}
 .dbx::before{content:"";position:absolute;left:14px;top:50%;width:8px;height:8px;margin-top:-4px;border-radius:50%;background:var(--muted);box-shadow:0 0 0 4px color-mix(in srgb,var(--muted) 18%,transparent)}
 .dbx.ok::before{background:var(--good);box-shadow:0 0 0 4px color-mix(in srgb,var(--good) 20%,transparent),0 0 12px color-mix(in srgb,var(--good) 60%,transparent)}
@@ -204,7 +209,6 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--acc)}
 .bar-in{min-height:0;gap:8px 12px;align-items:center}
 .bar .tabs,.bar .period{pointer-events:auto}
 .tabs{position:relative;display:flex;gap:2px;padding:5px;border-radius:999px}
-.tabs,.period{background:var(--bar-bg);-webkit-backdrop-filter:blur(30px) saturate(200%);backdrop-filter:blur(30px) saturate(200%)}
 .tab{position:relative;z-index:1;display:inline-flex;align-items:center;gap:7px;padding:9px 15px;border-radius:999px;font-weight:600;font-size:14px;color:var(--ink-2);background:transparent;line-height:1.2;
   -webkit-tap-highlight-color:transparent;overflow:hidden;transition:color .3s ease,transform .6s var(--spring)}
 .tab .ti{width:17px;height:17px;flex:none}
@@ -226,10 +230,9 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--acc)}
 .seg-sm button{padding:5px 11px;font-size:12.5px}
 
 /* Indicateur liquide (créé par motion.js) */
-.ind{position:absolute;left:0;top:0;z-index:0;border-radius:999px;pointer-events:none;will-change:transform,width}
+.ind{position:absolute;left:0;top:0;z-index:0;border-radius:999px;pointer-events:none}
 .ind::after{content:"";position:absolute;inset:1px;border-radius:inherit;background:radial-gradient(120% 90% at 30% 0%,rgba(255,255,255,.75),transparent 60%);opacity:.55}
-.tabs>.ind{background:var(--ind-bg);
-  box-shadow:inset 0 1px 0 var(--ind-hi),inset 0 -1px 1px rgba(15,23,32,.06),0 2px 8px -2px var(--shadow),0 10px 22px -12px var(--shadow)}
+.tabs>.ind{background:var(--ind-bg);box-shadow:inset 0 1px 0 var(--ind-hi),inset 0 -1px 1px rgba(15,23,32,.06),0 2px 8px -2px var(--shadow),0 10px 22px -12px var(--shadow)}
 .seg>.ind{background:var(--acc-grad);box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 6px 16px -8px var(--acc)}
 .seg>.ind::after{opacity:.35}
 .has-ind>.tab[aria-selected="true"],.has-ind>button[aria-checked="true"]{background:transparent!important;box-shadow:none!important}
@@ -249,13 +252,14 @@ main{padding-block:12px 48px}
 .card-h h3::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin:0 9px 0 2px;vertical-align:2px;background:var(--acc-grad);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 16%,transparent)}
 .jr-h h3::before{display:none}
 .jr-h{border-top:0;padding:0 6px;margin:6px 0 -2px}
-.legend{color:var(--ink-2);font-size:12.5px}
+.legend{color:var(--ink-2);font-size:12.5px;gap:4px 12px}
 .k-rect{border-radius:3px}
-.search{border:0;border-radius:999px;padding:8px 14px;background:var(--glass-2);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:inset 0 1px 0 var(--rim-a),0 1px 3px var(--shadow)}
+.k-line{height:3px;border-radius:2px}
+.search{border:0;border-radius:999px;padding:8px 14px;background:var(--glass-2);box-shadow:inset 0 1px 0 var(--rim-a),0 1px 3px var(--shadow)}
 .foot{border-top:0;color:var(--muted)}
 
 /* ---------- Bilan : poids ---------- */
-.hero{padding:20px 20px 14px}
+.hero{padding:20px 20px 14px;overflow:hidden}
 .hero-l{font-size:13px;font-weight:600;color:var(--ink-2)}
 .hero-v{font-family:var(--fd);font-stretch:normal;font-weight:700;font-size:clamp(60px,9vw,98px);line-height:.96;letter-spacing:-.045em;margin-top:8px;
   background:linear-gradient(180deg,var(--ink) 35%,color-mix(in srgb,var(--ink) 55%,var(--acc)) 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;padding-bottom:.04em}
@@ -264,17 +268,23 @@ main{padding-block:12px 48px}
 .hero-facts{border-top:0;gap:8px;margin:16px 0 14px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
 .hero-facts>div{border:0;padding:10px 12px;border-radius:16px;color:var(--ink-2);background:color-mix(in srgb,var(--glass-2) 50%,transparent);box-shadow:inset 0 0 0 1px var(--line),inset 0 1px 0 var(--rim-a)}
 .hero-facts b{font-family:var(--fd);font-stretch:normal;font-weight:700;font-size:19px;letter-spacing:-.01em}
+.glint{position:absolute;top:-20%;bottom:-20%;left:0;width:45%;pointer-events:none;z-index:1;opacity:.55;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.6) 50%,transparent)}
 
-/* ---------- Bilan : étiquette des valeurs ---------- */
+/* ---------- Bilan : étiquette des valeurs, avec jauges vers l'objectif ---------- */
 .label{padding:18px 18px 16px}
 .label-t{font-family:var(--fd);font-stretch:normal;font-weight:700;font-size:20px;letter-spacing:-.015em}
 .label-s{color:var(--ink-2)}
 .label-bar{height:3px;border-radius:3px;background:var(--acc-grad);margin:10px 0 4px;box-shadow:0 0 14px -2px color-mix(in srgb,var(--acc) 55%,transparent)}
 .label-bar.mid{height:1px;background:var(--line-2);margin:4px 0;box-shadow:none}
-.lr{border-bottom:1px solid var(--line);padding:7px 0}
+.lr{border-bottom:1px solid var(--line);padding:8px 0}
 .lr.head{border-bottom:0;color:var(--muted)}
 .lr.big .ln,.lr.big .lv{font-family:var(--fd);font-stretch:normal;font-weight:700}
 .lr .lp{color:var(--ink)}
+.lgauge{grid-column:1 / -1;display:block;height:5px;margin:7px 0 1px;border-radius:999px;background:var(--surface-2);box-shadow:inset 0 1px 1px rgba(15,23,32,.06);overflow:hidden}
+.lgauge i{display:block;height:100%;border-radius:inherit;background:var(--acc-grad)}
+.lgauge i.ok{background:var(--ok-grad)}
+.lgauge i.over{background:var(--over-grad)}
 .label-foot{margin-top:10px}
 
 /* ---------- Constats, régularité ---------- */
@@ -301,18 +311,31 @@ main{padding-block:12px 48px}
 .stat-v{font-family:var(--fd);font-stretch:normal;font-weight:700;font-size:28px;letter-spacing:-.025em;margin-top:6px}
 .stat-v .u{font-family:var(--f);font-stretch:normal;color:var(--ink-2)}
 .stat-s{color:var(--muted)}
+.stat .lgauge{margin:8px 0 6px;height:4px}
 .disc{border-radius:50%}
 
-/* ---------- Graphiques ---------- */
-.chart text{font-family:var(--f);fill:var(--muted)}
-.chart .grid{stroke:var(--line)}
+/* =====================================================================
+   Graphiques
+   ===================================================================== */
+.chart text{font-family:var(--f);font-size:10.5px;fill:var(--muted)}
+.chart .grid{stroke:var(--line-2);stroke-dasharray:1.5 5;stroke-linecap:round}
+.chart .grid.v{stroke:var(--line);stroke-dasharray:1 6}
 .chart .base{stroke:var(--line-2)}
-.chart .ref{stroke:var(--ink-2)}
-.chart .ref-t{fill:var(--ink)}
-.chart .cross{stroke:var(--ink-2)}
+.chart .ref{stroke:var(--ink-2);stroke-width:1.2;stroke-dasharray:4 5;stroke-linecap:round;opacity:.6}
+.chart .cross{stroke:var(--ink-2);stroke-dasharray:3 4;stroke-width:1}
 .chart .zone{fill:var(--d3);opacity:.09}
+.chart .pill-l rect{fill:var(--glass-2);stroke:var(--line-2);stroke-width:1}
+.chart .pill-l text{font-size:10.5px;font-weight:650;fill:var(--ink-2)}
+.chart .val-p rect{fill:var(--ink);stroke:none}
+.chart .val-p text{fill:var(--bg);font-weight:700}
+.chart .rec-p rect{fill:#F6A71C}
+.chart .rec-p text{fill:#3B2600}
+.chart .halo{opacity:.18}
+.chart .m{transition:opacity .15s}
+.chart.hovering .m.dim{opacity:1}
+.chart.hovering .m:not(.on){opacity:.35}
 .tip{background:var(--tip-bg);color:var(--tip-ink);border-radius:16px;padding:10px 12px;
-  -webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%);
   box-shadow:inset 0 1px 0 var(--rim-a),0 2px 6px var(--shadow),0 16px 34px -14px var(--shadow)}
 .tip-t{font-family:var(--fd);font-weight:600}
 .tip-r i{border-radius:2px}
@@ -327,20 +350,23 @@ main{padding-block:12px 48px}
 .cell.has:hover{box-shadow:inset 0 1px 0 rgba(255,255,255,.35),0 0 0 2px color-mix(in srgb,var(--acc) 45%,transparent)}
 .cell.out{background:transparent;outline:0;box-shadow:inset 0 0 0 1px var(--line)}
 .cell-k{font-family:var(--fd);font-stretch:normal;font-weight:700}
-.cell-p{height:3px;border-radius:999px}
+.cell-p{height:3px;border-radius:999px;background:color-mix(in srgb,var(--ink) 10%,transparent)}
 .cell-p span{border-radius:999px}
+.cell-s .disc,.cal-legend .disc{background:var(--acc)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--acc) 22%,transparent)}
 .ramp i{border-radius:4px}
 
 /* ---------- Barres ---------- */
-.htrack .zone{border-radius:6px;background:color-mix(in srgb,var(--d3) 12%,transparent);border-left:1px solid color-mix(in srgb,var(--d3) 45%,transparent);border-right:1px solid color-mix(in srgb,var(--d3) 45%,transparent)}
-.htrack .seg-p{border-radius:999px 0 0 999px}
-.htrack .seg-s{border-radius:0 999px 999px 0}
+.htrack{border-radius:999px;background:var(--surface-2)}
+.htrack .zone{border-radius:6px;background:color-mix(in srgb,var(--d3) 14%,transparent);border-left:1px solid color-mix(in srgb,var(--d3) 45%,transparent);border-right:1px solid color-mix(in srgb,var(--d3) 45%,transparent)}
+.htrack .seg-p{border-radius:999px 0 0 999px;background:linear-gradient(90deg,color-mix(in srgb,var(--d1) 70%,#fff),var(--d1))}
+.htrack .seg-s{border-radius:0 999px 999px 0;background:color-mix(in srgb,var(--d1) 30%,transparent)}
 .htrack .seg-p.solo{border-radius:999px}
+.hscale{color:var(--muted)}
 .wd-t{border-radius:999px;background:var(--surface-2)}
 .wd-t span{border-radius:999px;background:var(--acc-grad)}
 .bal-t{gap:3px}
-.bal-t .a{border-radius:999px 0 0 999px}
-.bal-t .b{border-radius:0 999px 999px 0}
+.bal-t .a{border-radius:999px 0 0 999px;background:linear-gradient(90deg,color-mix(in srgb,var(--d1) 70%,#fff),var(--d1))}
+.bal-t .b{border-radius:0 999px 999px 0;background:linear-gradient(90deg,var(--d2),color-mix(in srgb,var(--d2) 70%,#fff))}
 
 /* ---------- Séances ---------- */
 .sessions{gap:10px;border-bottom:0}
@@ -395,12 +421,12 @@ main{padding-block:12px 48px}
 .mdetail{border-top:1px solid var(--line)}
 .mdetail h4{font-family:var(--fd);font-stretch:normal;font-weight:600}
 
-/* ---------- Superpositions ---------- */
+/* ---------- Superpositions (rares, elles gardent le vrai flou) ---------- */
 .drop{background:color-mix(in srgb,var(--bg) 50%,transparent);-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%)}
 .drop-in{padding:34px 36px;border-radius:30px;outline:2px dashed var(--line-2);outline-offset:-12px}
 .drop-in b{font-family:var(--fd);font-stretch:normal;font-weight:700}
 .dlg{background:color-mix(in srgb,var(--bg) 40%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
-.dlg-in{border-radius:28px;padding:22px 22px 20px;background:linear-gradient(165deg,var(--glass-2) -20%,color-mix(in srgb,var(--glass-2) 80%,transparent) 60%)}
+.dlg-in{border-radius:28px;padding:22px 22px 20px;background:linear-gradient(165deg,var(--glass-2) -20%,color-mix(in srgb,var(--glass-2) 92%,transparent) 60%)}
 .dlg-in h3{font-family:var(--fd);font-stretch:normal;font-weight:700}
 .toast{border-radius:18px;padding:11px 16px;font-size:13.5px;background:var(--tip-bg);color:var(--tip-ink);
   -webkit-backdrop-filter:blur(22px) saturate(180%);backdrop-filter:blur(22px) saturate(180%);
@@ -415,18 +441,13 @@ main{padding-block:12px 48px}
   .tabs{position:fixed;left:max(12px,env(safe-area-inset-left,0px));right:max(12px,env(safe-area-inset-right,0px));
     bottom:max(10px,calc(env(safe-area-inset-bottom,0px) - 8px));z-index:35;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:0;
     padding:5px;border-radius:30px;border-top:0;
-    box-shadow:inset 0 1px 0 var(--rim-a),inset 0 -1px 0 var(--rim-b),0 2px 6px var(--shadow),0 22px 44px -14px var(--shadow);
-    transition:left .55s var(--spring),right .55s var(--spring),padding .45s var(--spring)}
+    box-shadow:inset 0 1px 0 var(--rim-a),inset 0 -1px 0 var(--rim-b),0 2px 6px var(--shadow),0 22px 44px -14px var(--shadow)}
   .tab{flex-direction:column;justify-content:center;gap:2px;padding:7px 0 6px;font-size:10.5px;font-weight:600;font-stretch:normal;letter-spacing:.005em;
-    border-radius:24px;color:var(--ink-2);text-align:center;transition:color .3s ease,transform .6s var(--spring),padding .45s var(--spring)}
+    border-radius:24px;color:var(--ink-2);text-align:center}
   .tab .ti{width:22px;height:22px}
-  .tab .tl{max-width:100%;max-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:opacity .25s ease,max-height .45s var(--spring)}
+  .tab .tl{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tab[aria-selected="true"]{color:var(--acc);font-weight:700}
   .tab[aria-selected="true"] .ti{color:var(--acc)}
-  /* défilement vers le bas : la barre se fait plus discrète, comme sur iOS */
-  body.tabs-min .tabs{left:max(34px,env(safe-area-inset-left,0px));right:max(34px,env(safe-area-inset-right,0px));padding:4px}
-  body.tabs-min .tab{padding:8px 0}
-  body.tabs-min .tab .tl{opacity:0;max-height:0}
   main{padding-bottom:calc(104px + env(safe-area-inset-bottom,0px))}
   .foot{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
   .toast{bottom:calc(92px + env(safe-area-inset-bottom,0px))}
@@ -436,8 +457,7 @@ main{padding-block:12px 48px}
   .brand-name{font-size:25px}
   .top-act{width:100%}
   .top-act .btn{flex:1;padding:9px 10px;font-size:13.5px}
-  .top-act label.btn{color:var(--ink);background:var(--glass-2);-webkit-backdrop-filter:blur(16px) saturate(170%);backdrop-filter:blur(16px) saturate(170%);
-    box-shadow:inset 0 1px 0 var(--rim-a),0 1px 2px var(--shadow),0 8px 20px -12px var(--shadow)}
+  .top-act label.btn{color:var(--ink);background:var(--glass-2);box-shadow:inset 0 1px 0 var(--rim-a),0 1px 2px var(--shadow),0 8px 20px -12px var(--shadow)}
   .panel{gap:12px}
   .card{padding:16px 14px}
   .hero{padding:16px 15px 12px}
@@ -467,6 +487,5 @@ main{padding-block:12px 48px}
 .btn .rp,.seg button[aria-checked="true"] .rp{background:radial-gradient(circle,rgba(255,255,255,.5),rgba(255,255,255,.12) 55%,rgba(255,255,255,0) 72%)}
 
 @media (prefers-reduced-motion: reduce){
-  .card::before,.hero::before,.label::before,.stats>.stat::before,.panel>.sessions>.ses::before,.start::before,.tabs::before,.period::before{transition:none}
-  .tabs,.tab,.tab .tl{transition:none}
+  .tab,.btn,.chipb,.pnav,.seg button,.mbtn,.cell,.ses-h,.chev,.stats>.stat,.nx{transition:none}
 }

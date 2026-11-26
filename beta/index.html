@@ -2065,17 +2065,55 @@ var BODY = (function () {
   }) : null;
   function timeChart(el, cfg) { el._cfg = cfg; drawChart(el); if (RO && !el._obs) { RO.observe(el); el._obs = true; } }
 
+  /* ---------- Graphiques (style verre) ----------
+     Même configuration qu'avant (séries, repères, infobulles) ; seul le dessin change :
+     barres arrondies en dégradé, courbes lissées avec aire, repères en pastille,
+     dernier point mis en valeur. Les éléments sont rangés par calques (<g>) pour que
+     la couche de mouvement les anime en bloc, sans animer chaque barre. */
+  var CHART_UID = 0;
+  function smoothPath(pts) {
+    var n = pts.length, i, d;
+    if (!n) return "";
+    d = "M" + pts[0][0].toFixed(1) + "," + pts[0][1].toFixed(1);
+    if (n < 3) { for (i = 1; i < n; i++) d += "L" + pts[i][0].toFixed(1) + "," + pts[i][1].toFixed(1); return d; }
+    // interpolation cubique monotone (Fritsch-Carlson) : courbe douce qui ne dépasse jamais les points
+    var dx = [], ms = [], t = [];
+    for (i = 0; i < n - 1; i++) { dx[i] = pts[i + 1][0] - pts[i][0] || 1e-6; ms[i] = (pts[i + 1][1] - pts[i][1]) / dx[i]; }
+    t[0] = ms[0]; t[n - 1] = ms[n - 2];
+    for (i = 1; i < n - 1; i++) t[i] = ms[i - 1] * ms[i] <= 0 ? 0 : (ms[i - 1] + ms[i]) / 2;
+    for (i = 0; i < n - 1; i++) {
+      if (ms[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
+      var a = t[i] / ms[i], b = t[i + 1] / ms[i], s = a * a + b * b;
+      if (s > 9) { var k = 3 / Math.sqrt(s); t[i] = k * a * ms[i]; t[i + 1] = k * b * ms[i]; }
+    }
+    for (i = 0; i < n - 1; i++) {
+      var h = dx[i] / 3;
+      d += "C" + (pts[i][0] + h).toFixed(1) + "," + (pts[i][1] + t[i] * h).toFixed(1) + " " + (pts[i + 1][0] - h).toFixed(1) + "," + (pts[i + 1][1] - t[i + 1] * h).toFixed(1) + " " + pts[i + 1][0].toFixed(1) + "," + pts[i + 1][1].toFixed(1);
+    }
+    return d;
+  }
+  function pill(parent, x, y, text, anchor, cls) {
+    var g = sv("g", { class: "pill-l" + (cls ? " " + cls : "") }, parent);
+    var r = sv("rect", { rx: 8, ry: 8, height: 18 }, g);
+    var t = sv("text", { x: x, y: y + 4, "text-anchor": anchor || "start" }, g);
+    t.textContent = text;
+    var w = 0; try { w = t.getComputedTextLength(); } catch (e) { w = text.length * 6; }
+    if (!w) w = text.length * 6;
+    var x0 = anchor === "end" ? x - w - 8 : anchor === "middle" ? x - w / 2 - 8 : x - 8;
+    r.setAttribute("x", x0.toFixed(1)); r.setAttribute("y", (y - 9).toFixed(1)); r.setAttribute("width", (w + 16).toFixed(1));
+    return g;
+  }
   function drawChart(el) {
     var cfg = el._cfg; if (!cfg) return;
     var W = Math.max(240, Math.round(el.clientWidth || 600)); el._w = W;
     var H = cfg.height || 220;
     var narrow = W < 420;
-    var m = { l: cfg.ml || 44, r: 10, t: 16, b: 26 };
+    var m = { l: cfg.ml || (narrow ? 38 : 44), r: 12, t: 18, b: 26 };
     var pw = W - m.l - m.r, ph = H - m.t - m.b;
     var d0 = cfg.d0, d1 = cfg.d1, n = d1 - d0 + 1, bw = pw / n;
     var X = function (d) { return m.l + (d - d0 + 0.5) * bw; };
     var nBarSeries = cfg.series.filter(function (s) { return s.type === "bar" || s.type === "stack"; }).length || 1;
-    var barW = Math.max(2, Math.min(24, (bw * 0.66) / nBarSeries));
+    var barW = Math.max(2, Math.min(14, (bw * 0.52) / nBarSeries));
 
     // domaine Y
     var vals = [];
@@ -2096,17 +2134,33 @@ var BODY = (function () {
     var nt = niceTicks(lo, hi, cfg.ticks || 4);
     if (cfg.fixed) { nt = { lo: cfg.fixed[0], hi: cfg.fixed[1], ticks: cfg.fixedTicks }; }
     var Y = function (v) { return m.t + ph - (v - nt.lo) / (nt.hi - nt.lo) * ph; };
+    var y0 = Y(0 > nt.lo ? 0 : nt.lo), yBottom = m.t + ph;
 
     var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, height: H, role: "img", "aria-label": cfg.label || "" });
     el.appendChild(svg);
     el.setAttribute("tabindex", "0");
+    var uid = "cg" + (++CHART_UID), defs = sv("defs", {}, svg), grads = {};
+    // dégradé vertical d'une couleur (identifiants uniques dans la page)
+    var vgrad = function (color, top, bot) {
+      var k = color + "|" + top + "|" + bot;
+      if (!grads[k]) {
+        var id = uid + "-" + Object.keys(grads).length, lg = sv("linearGradient", { id: id, x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+        [[0, top], [1, bot]].forEach(function (s) { var st = sv("stop", { offset: s[0] }, lg); st.style.stopColor = color; st.style.stopOpacity = s[1]; });
+        grads[k] = id;
+      }
+      return "url(#" + grads[k] + ")";
+    };
+    var gAx = sv("g", { class: "ax" }, svg), gBars = sv("g", { class: "bars" }, svg), gArea = sv("g", { class: "areas" }, svg);
+    var gRefs = sv("g", { class: "refs" }, svg), gLines = sv("g", { class: "lines" }, svg), gDots = sv("g", { class: "dots" }, svg), gHi = sv("g", { class: "hi" }, svg);
+    var gLab = sv("g", { class: "labels" }, svg); // étiquettes des repères, au-dessus des courbes pour rester lisibles
+    gBars.setAttribute("data-y0", y0.toFixed(1));
 
-    if (cfg.band) sv("rect", { class: "zone", x: m.l, y: Y(cfg.band.to), width: pw, height: Math.max(0, Y(cfg.band.from) - Y(cfg.band.to)) }, svg);
+    if (cfg.band) sv("rect", { class: "zone", x: m.l, y: Y(cfg.band.to), width: pw, height: Math.max(0, Y(cfg.band.from) - Y(cfg.band.to)), rx: 6 }, gAx);
     // grille + étiquettes Y
     nt.ticks.forEach(function (t) {
       var y = Math.round(Y(t)) + 0.5;
-      sv("line", { class: t === 0 && cfg.zero !== false ? "base" : "grid", x1: m.l, x2: W - m.r, y1: y, y2: y }, svg);
-      var tx = sv("text", { x: m.l - 8, y: y + 4, "text-anchor": "end" }, svg);
+      sv("line", { class: t === 0 && cfg.zero !== false ? "base" : "grid", x1: m.l, x2: W - m.r, y1: y, y2: y }, gAx);
+      var tx = sv("text", { x: m.l - 8, y: y + 4, "text-anchor": "end" }, gAx);
       tx.textContent = (cfg.yFmt || fmt)(t);
     });
     // étiquettes X
@@ -2119,22 +2173,23 @@ var BODY = (function () {
       var ok = step >= 7 ? SR.weekday(d) === 1 : idx % step === 0;
       if (!ok) continue;
       var x = X(d);
-      var t = sv("text", { x: x, y: H - 6, "text-anchor": "middle" }, svg);
+      var t = sv("text", { x: x, y: H - 6, "text-anchor": "middle" }, gAx);
       t.textContent = n <= 10 && !narrow ? DOW[SR.weekday(d)] + " " + D(d).getUTCDate() : dShort(d);
       if (x - 22 < m.l - 30) t.setAttribute("text-anchor", "start");
     }
 
     var marks = {}; // jour -> éléments
     var addMark = function (d, e) { (marks[d] = marks[d] || []).push(e); e.classList.add("m"); };
-    var barIdx = 0;
+    var barIdx = 0, rad = Math.min(6, barW / 2);
     cfg.series.forEach(function (s) {
       if (s.type === "bar") {
         var off = nBarSeries > 1 ? (barIdx - (nBarSeries - 1) / 2) * (barW + 2) : 0; barIdx++;
         s.points.forEach(function (p) {
           if (p.v === null) return;
-          var col = p.v < 0 && s.negColor ? s.negColor : (p.color || s.color);
-          var pth = sv("path", { d: barPath(X(p.day) + off, Y(0 > nt.lo ? 0 : nt.lo), Y(p.v), barW, 4) }, svg);
-          pth.style.fill = col; addMark(p.day, pth);
+          var col = p.v < 0 && s.negColor ? s.negColor : (p.color || s.color), yv = Y(p.v), down = yv > y0;
+          var pth = sv("path", { d: barPath(X(p.day) + off, y0, yv, barW, rad) }, gBars);
+          pth.style.fill = down ? vgrad(col, 0.5, 1) : vgrad(col, 1, 0.5);
+          addMark(p.day, pth);
         });
       } else if (s.type === "stack") {
         barIdx++;
@@ -2147,8 +2202,8 @@ var BODY = (function () {
             var gb = i > 0 ? 1 : 0, gt = i < last ? 1 : 0;
             var top = yB + gt, bot = yA - gb;
             if (bot - top < 0.5) return;
-            var dpath = i === last ? barPath(X(p.day), bot, top, barW, 4) : "M" + (X(p.day) - barW / 2) + "," + bot + "V" + top + "H" + (X(p.day) + barW / 2) + "V" + bot + "Z";
-            var e = sv("path", { d: dpath }, svg); e.style.fill = s.colors[i]; addMark(p.day, e);
+            var dpath = i === last ? barPath(X(p.day), bot, top, barW, rad) : "M" + (X(p.day) - barW / 2) + "," + bot + "V" + top + "H" + (X(p.day) + barW / 2) + "V" + bot + "Z";
+            var e = sv("path", { d: dpath }, gBars); e.style.fill = vgrad(s.colors[i], 1, 0.78); addMark(p.day, e);
           });
         });
       }
@@ -2156,50 +2211,65 @@ var BODY = (function () {
     (cfg.refs || []).forEach(function (r) {
       if (r.v < nt.lo || r.v > nt.hi) return;
       var y = Y(r.v);
-      sv("line", { class: "ref", x1: m.l, x2: W - m.r, y1: y, y2: y }, svg);
-      if (r.label) { var tt = sv("text", { class: "ref-t", x: W - m.r - 2, y: y - 6, "text-anchor": "end" }, svg); tt.textContent = r.label; }
+      sv("line", { class: "ref", x1: m.l, x2: W - m.r, y1: y, y2: y }, gRefs);
+      if (r.label) pill(gLab, W - m.r - 4, Math.max(11, y - 12), r.label, "end", "ref-p");
     });
-    var dotsLayer = [];
     cfg.series.forEach(function (s) {
       if (s.type !== "line") return;
       var pts = s.points.filter(function (p) { return p.v !== null; });
       if (!pts.length) return;
-      var dstr = "", prev = null;
+      // segments continus (une interruption si un jour manque, sauf séries « connect »)
+      var runs = [], run = [], prev = null;
       pts.forEach(function (p) {
-        var cmd = (prev === null || (!s.connect && p.day - prev > 1)) ? "M" : "L";
-        dstr += cmd + X(p.day).toFixed(1) + "," + Y(p.v).toFixed(1); prev = p.day;
+        if (prev !== null && !s.connect && p.day - prev > 1) { runs.push(run); run = []; }
+        run.push([X(p.day), Y(p.v)]); prev = p.day;
       });
+      runs.push(run);
       if (!s.noLine) {
-        var ln = sv("path", { d: dstr, fill: "none", "stroke-width": s.width || 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
-        ln.style.stroke = s.color; if (s.dash) ln.setAttribute("stroke-dasharray", s.dash);
+        if (s.area) runs.forEach(function (r) {
+          if (r.length < 2) return;
+          var a = sv("path", { d: smoothPath(r) + "L" + r[r.length - 1][0].toFixed(1) + "," + yBottom + "L" + r[0][0].toFixed(1) + "," + yBottom + "Z" }, gArea);
+          a.style.fill = vgrad(s.color, 0.28, 0);
+        });
+        runs.forEach(function (r) {
+          var ln = sv("path", { d: smoothPath(r), fill: "none", "stroke-width": s.width || 2.2, "stroke-linejoin": "round", "stroke-linecap": "round" }, gLines);
+          ln.style.stroke = s.color; if (s.dash) ln.setAttribute("stroke-dasharray", s.dash);
+        });
       }
+      var many = pts.length > 60;
       if (s.dots) pts.forEach(function (p) {
-        var c = sv("circle", { cx: X(p.day), cy: Y(p.v), r: s.r || 4, "stroke-width": 2 }, svg);
-        c.style.fill = s.color; c.style.stroke = "var(--surface)"; addMark(p.day, c); dotsLayer.push(c);
+        var c = sv("circle", { cx: X(p.day), cy: Y(p.v), r: many ? Math.min(2.2, s.r || 3) : (s.r || 3), "stroke-width": many ? 1 : 1.5 }, gDots);
+        c.style.fill = s.color; c.style.stroke = "var(--ring)"; if (s.dotOpacity) c.style.fillOpacity = s.dotOpacity;
+        addMark(p.day, c);
       });
-      if (s.endLabel && pts.length) {
-        var lp = pts[pts.length - 1];
-        var et = sv("text", { class: "ref-t", x: Math.min(X(lp.day) + 8, W - m.r), y: Y(lp.v) - 8, "text-anchor": X(lp.day) + 60 > W ? "end" : "start" }, svg);
-        et.textContent = s.endLabel(lp);
+      var lp = pts[pts.length - 1];
+      if (s.last) {
+        var hx = X(lp.day), hy = Y(lp.v);
+        var halo = sv("circle", { class: "halo", cx: hx, cy: hy, r: 10 }, gHi); halo.style.fill = s.color;
+        var c2 = sv("circle", { cx: hx, cy: hy, r: 4.5, "stroke-width": 2 }, gHi); c2.style.fill = s.color; c2.style.stroke = "var(--ring)";
+        if (s.lastLabel) { var right = hx > W - 90; pill(gHi, hx + (right ? -12 : 12), Math.max(11, hy - 16), s.lastLabel(lp), right ? "end" : "start", "val-p"); }
       }
+      if (s.endLabel && pts.length) pill(gHi, Math.min(X(lp.day) + 8, W - m.r), Math.max(11, Y(lp.v) - 14), s.endLabel(lp), X(lp.day) + 60 > W ? "end" : "start", "val-p");
     });
 
-    // survol
+    // survol : seuls les éléments du jour quitté et du jour visé changent
     var cross = sv("line", { class: "cross", y1: m.t, y2: m.t + ph }, svg);
     var hit = sv("rect", { x: m.l, y: 0, width: pw, height: H, fill: "transparent" }, svg);
     var cur = null;
     function focusDay(d, cx, cy) {
-      cur = d;
-      var x = X(d);
-      cross.setAttribute("x1", x); cross.setAttribute("x2", x); cross.style.opacity = 1;
-      el.classList.add("hovering");
-      svg.querySelectorAll(".m").forEach(function (e) { e.classList.add("dim"); });
-      (marks[d] || []).forEach(function (e) { e.classList.remove("dim"); });
+      if (d !== cur) {
+        (marks[cur] || []).forEach(function (e) { e.classList.remove("on"); });
+        (marks[d] || []).forEach(function (e) { e.classList.add("on"); });
+        cur = d;
+        var x = X(d);
+        cross.setAttribute("x1", x); cross.setAttribute("x2", x); cross.style.opacity = 1;
+        el.classList.add("hovering");
+      }
       var info = cfg.tip(d);
       if (!info) { hideTip(); return; }
       showTip(info.title, info.rows, info.extra, cx, cy);
     }
-    function clear() { cur = null; cross.style.opacity = 0; el.classList.remove("hovering"); svg.querySelectorAll(".m").forEach(function (e) { e.classList.remove("dim"); }); hideTip(); }
+    function clear() { (marks[cur] || []).forEach(function (e) { e.classList.remove("on"); }); cur = null; cross.style.opacity = 0; el.classList.remove("hovering"); hideTip(); }
     function fromEvent(ev) {
       var r = svg.getBoundingClientRect();
       var x = (ev.clientX - r.left) * (W / r.width);
@@ -2235,8 +2305,14 @@ var BODY = (function () {
     return '<section class="card ' + (extraCls || "") + '"' + (id ? ' id="' + id + '"' : "") + '><div class="card-h"><div><h3>' + title + '</h3>' + (sub ? '<div class="card-sub">' + sub + '</div>' : "") + '</div>' + (legend ? '<div class="legend">' + legend + '</div>' : "") + '</div>' + body + '</section>';
   }
   function key(kind, color, label) { return '<span><i class="k-' + kind + '" style="--kc:' + color + '"></i>' + label + '</span>'; }
-  function stat(label, value, unit, sub, disc) {
-    return '<div class="stat"><div class="lbl">' + (disc ? '<i class="disc" style="--pc:' + disc + '"></i>' : "") + label + '</div><div class="stat-v">' + value + (unit ? '<span class="u">' + unit + '</span>' : "") + '</div>' + (sub ? '<div class="stat-s">' + sub + '</div>' : "") + '</div>';
+  // jauge vers un objectif : verte quand il est atteint (à ±10 % pour une cible de type « range »), orange au-delà
+  function gaugeHTML(v, t, kind) {
+    if (v === null || v === undefined || !t || !isFinite(v)) return "";
+    var r = v / t, cls = kind === "range" ? (Math.abs(r - 1) <= 0.1 ? "ok" : r > 1 ? "over" : "") : (r >= 0.98 ? "ok" : "");
+    return '<span class="lgauge" aria-hidden="true"><i class="' + cls + '" style="width:' + Math.max(2, Math.min(100, r * 100)).toFixed(1) + '%"></i></span>';
+  }
+  function stat(label, value, unit, sub, disc, gz) {
+    return '<div class="stat"><div class="lbl">' + (disc ? '<i class="disc" style="--pc:' + disc + '"></i>' : "") + label + '</div><div class="stat-v">' + value + (unit ? '<span class="u">' + unit + '</span>' : "") + '</div>' + (gz || "") + (sub ? '<div class="stat-s">' + sub + '</div>' : "") + '</div>';
   }
   function periodName(sl) {
     if (sl.d0 === sl.d1) return dLong(sl.d0);
@@ -2336,12 +2412,12 @@ var BODY = (function () {
     var pAvg = avg(days, "prot");
     var bals = days.filter(function (d) { return d.balance !== null; });
     var stats = '<div class="stats">' +
-      stat("Calories", fmt(avg(days, "kcal")), "kcal", "cible " + fmt(T.kcal), null) +
-      stat("Protéines", fmt(pAvg), "g", (lastW ? fmt(pAvg / lastW, 1) + " g/kg · " : "") + (sh ? fmt(sh.p * 100) + "\u00a0% des kcal" : ""), "var(--d2)") +
+      stat("Calories", fmt(avg(days, "kcal")), "kcal", "cible " + fmt(T.kcal), null, gaugeHTML(avg(days, "kcal"), T.kcal, "range")) +
+      stat("Protéines", fmt(pAvg), "g", (lastW ? fmt(pAvg / lastW, 1) + " g/kg · " : "") + (sh ? fmt(sh.p * 100) + "\u00a0% des kcal" : ""), "var(--d2)", gaugeHTML(pAvg, T.prot)) +
       stat("Glucides", fmt(avg(days, "carb")), "g", sh ? fmt(sh.c * 100) + "\u00a0% des kcal" : "", "var(--d3)") +
       stat("Lipides", fmt(avg(days, "fat")), "g", sh ? fmt(sh.f * 100) + "\u00a0% des kcal" : "", "var(--d1)") +
-      stat("Fibres", fmt(avg(days, "fiber"), 1), "g", "repère " + FIBER_REF + " g" + (count(days, "fiber") < days.length ? " · " + count(days, "fiber") + " j. renseignés" : ""), "var(--d4)") +
-      stat("Pas", fmt(avg(days, "steps")), "", "dépense " + fmt(avg(days, "burn")) + " kcal", null) +
+      stat("Fibres", fmt(avg(days, "fiber"), 1), "g", "repère " + FIBER_REF + " g" + (count(days, "fiber") < days.length ? " · " + count(days, "fiber") + " j. renseignés" : ""), "var(--d4)", gaugeHTML(avg(days, "fiber"), FIBER_REF)) +
+      stat("Pas", fmt(avg(days, "steps")), "", "dépense " + fmt(avg(days, "burn")) + " kcal", null, state.cfg && state.cfg.steps ? gaugeHTML(avg(days, "steps"), state.cfg.steps) : "") +
       '</div>';
     var dayMap = {}; days.forEach(function (d) { dayMap[d.day] = d; });
     var tipDay = function (d) {
@@ -2371,7 +2447,7 @@ var BODY = (function () {
     var P = function (k) { return days.filter(function (d) { return d[k] !== null; }).map(function (d) { return { day: d.day, v: d[k] }; }); };
     timeChart($("#c-kcal"), Object.assign({}, base, {
       label: "Apport et dépense en kcal",
-      series: [{ type: "bar", name: "apport", color: "var(--d1)", points: P("kcal") }, { type: "line", name: "dépense", color: "var(--d5)", points: P("burn"), dots: true, r: 3.5 }],
+      series: [{ type: "bar", name: "apport", color: "var(--d1)", points: P("kcal") }, { type: "line", name: "dépense", color: "var(--d5)", points: P("burn"), dots: true, r: 2.6, width: 2 }],
       refs: [{ v: T.kcal, label: "cible " + fmt(T.kcal) }], tip: tipDay,
       yFmt: function (v) { return v >= 1000 ? fmt(v / 1000, v % 1000 ? 1 : 0) + "k" : fmt(v); }
     }));
@@ -2453,7 +2529,7 @@ var BODY = (function () {
     var ds = sl.done.filter(function (s) { return s.ds; }).length;
     var vol = sum(sl.done, "volume");
     var stats = '<div class="stats">' +
-      stat("Séances", fmt(sl.sessions.length), "", sl.nDays >= 7 ? fmt(sl.sessions.length / (sl.nDays / 7), 1) + " par semaine" : "sur " + sl.nDays + " " + plural(sl.nDays, "jour")) +
+      stat("Séances", fmt(sl.sessions.length), "", sl.nDays >= 7 ? fmt(sl.sessions.length / (sl.nDays / 7), 1) + " par semaine" : "sur " + sl.nDays + " " + plural(sl.nDays, "jour"), null, sl.nDays >= 7 && state.cfg ? gaugeHTML(sl.sessions.length / (sl.nDays / 7), state.cfg.sessions) : "") +
       stat("Séries faites", fmt(sl.done.length), "", ds ? "dont " + ds + " drop set" + (ds > 1 ? "s" : "") : "aucun drop set") +
       stat("Exos par séance", fmt(sl.sessions.reduce(function (a, s) { return a + s.exDone; }, 0) / sl.sessions.length, 1), "", fmt(sl.done.length / sl.sessions.length, 1) + " séries par séance") +
       stat("Volume", vol >= 1000 ? fmt(vol / 1000, 1) : fmt(vol), vol >= 1000 ? "t" : "kg", fmt(vol / sl.sessions.length) + " kg par séance") +
@@ -2525,7 +2601,7 @@ var BODY = (function () {
       timeChart($("#c-ex"), {
         d0: sl.d0, d1: sl.d1, height: 220, zero: false, pad: 2, label: "Progression " + ex.name,
         series: [
-          { type: "line", name: "1RM estimé", color: "var(--d2)", points: ex.points.filter(function (p) { return p.e1 !== null; }).map(function (p) { return { day: p.day, v: p.e1 }; }), connect: true, dots: true, r: 3.5 },
+          { type: "line", name: "1RM estimé", color: "var(--d2)", points: ex.points.filter(function (p) { return p.e1 !== null; }).map(function (p) { return { day: p.day, v: p.e1 }; }), connect: true, dots: true, r: 3, area: true, last: true },
           { type: "line", name: "charge max", color: "var(--d1)", points: ex.points.filter(function (p) { return p.top; }).map(function (p) { return { day: p.day, v: p.top.w }; }), connect: true, dots: true }
         ],
         tip: function (d) {
@@ -2824,17 +2900,21 @@ var BODY = (function () {
     el.textContent = "";
     if (pts.length < 2) { var em = document.createElement("div"); em.className = "empty"; em.textContent = "Pas assez de séances avec une charge pour tracer une courbe."; el.appendChild(em); return; }
     var W = Math.max(260, Math.round(el.clientWidth || 600)), Hh = 250; el._w = W;
-    var m = { l: 46, r: 14, t: 18, b: 26 }, pw = W - m.l - m.r, ph = Hh - m.t - m.b;
+    var m = { l: 46, r: 14, t: 22, b: 26 }, pw = W - m.l - m.r, ph = Hh - m.t - m.b;
     var d0 = pts[0].day, d1x = pts[pts.length - 1].day, span = Math.max(1, d1x - d0);
     var vals = pts.map(function (p) { return p.e1; });
     var nt = niceTicks(Math.min.apply(null, vals), Math.max.apply(null, vals), 4);
     var X = function (d) { return m.l + (d - d0) / span * pw; }, Y = function (v) { return m.t + ph - (v - nt.lo) / (nt.hi - nt.lo) * ph; };
     var svg = sv("svg", { viewBox: "0 0 " + W + " " + Hh, height: Hh, role: "img", "aria-label": "1RM estimé de " + e.name + " depuis " + dFull(d0) });
     el.appendChild(svg);
+    var uid = "cg" + (++CHART_UID), defs = sv("defs", {}, svg);
+    var lg = sv("linearGradient", { id: uid, x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+    [[0, 0.3], [1, 0]].forEach(function (s) { var st = sv("stop", { offset: s[0] }, lg); st.style.stopColor = "var(--d1)"; st.style.stopOpacity = s[1]; });
+    var gAx = sv("g", { class: "ax" }, svg), gArea = sv("g", { class: "areas" }, svg), gLines = sv("g", { class: "lines" }, svg), gDots = sv("g", { class: "dots" }, svg), gHi = sv("g", { class: "hi" }, svg);
     nt.ticks.forEach(function (t) {
       var y = Math.round(Y(t)) + 0.5;
-      sv("line", { class: "grid", x1: m.l, x2: W - m.r, y1: y, y2: y }, svg);
-      sv("text", { x: m.l - 8, y: y + 4, "text-anchor": "end" }, svg).textContent = fmt(t);
+      sv("line", { class: "grid", x1: m.l, x2: W - m.r, y1: y, y2: y }, gAx);
+      sv("text", { x: m.l - 8, y: y + 4, "text-anchor": "end" }, gAx).textContent = fmt(t);
     });
     // repères de temps : années, ou mois si la courbe couvre moins d'un an et demi
     var byMonth = span < 550, dt = D(d0), yy = dt.getUTCFullYear(), mm = dt.getUTCMonth(), lastX = -99;
@@ -2842,21 +2922,25 @@ var BODY = (function () {
       if (byMonth) { mm++; if (mm > 11) { mm = 0; yy++; } } else { yy++; mm = 0; }
       var sd = SR.day(yy + "-" + pad(mm + 1) + "-01"); if (sd > d1x) break;
       var x = Math.round(X(sd)) + 0.5;
-      sv("line", { class: "grid", x1: x, x2: x, y1: m.t, y2: m.t + ph }, svg);
-      if (x - lastX > 44 && x < W - m.r - 16) { sv("text", { x: x, y: Hh - 6, "text-anchor": "middle" }, svg).textContent = byMonth ? MON[mm] + (mm === 0 ? " " + yy : "") : yy; lastX = x; }
+      sv("line", { class: "grid v", x1: x, x2: x, y1: m.t, y2: m.t + ph }, gAx);
+      if (x - lastX > 44 && x < W - m.r - 16) { sv("text", { x: x, y: Hh - 6, "text-anchor": "middle" }, gAx).textContent = byMonth ? MON[mm] + (mm === 0 ? " " + yy : "") : yy; lastX = x; }
     }
-    sv("text", { x: m.l, y: Hh - 6, "text-anchor": "start" }, svg).textContent = lastX > m.l + 70 || lastX < 0 ? MON[D(d0).getUTCMonth()] + " " + D(d0).getUTCFullYear() : "";
-    var dstr = pts.map(function (p, i) { return (i ? "L" : "M") + X(p.day).toFixed(1) + "," + Y(p.e1).toFixed(1); }).join("");
-    var ln = sv("path", { d: dstr, fill: "none", "stroke-width": 1.5, "stroke-linejoin": "round" }, svg); ln.style.stroke = "var(--d1)";
-    if (pts.length <= 160) pts.forEach(function (p) { var c = sv("circle", { cx: X(p.day), cy: Y(p.e1), r: 2.5 }, svg); c.style.fill = "var(--d1)"; });
+    sv("text", { x: m.l, y: Hh - 6, "text-anchor": "start" }, gAx).textContent = lastX > m.l + 70 || lastX < 0 ? MON[D(d0).getUTCMonth()] + " " + D(d0).getUTCFullYear() : "";
+    var xy = pts.map(function (p) { return [X(p.day), Y(p.e1)]; }), line = smoothPath(xy);
+    var area = sv("path", { d: line + "L" + xy[xy.length - 1][0].toFixed(1) + "," + (m.t + ph) + "L" + xy[0][0].toFixed(1) + "," + (m.t + ph) + "Z" }, gArea);
+    area.style.fill = "url(#" + uid + ")";
+    var ln = sv("path", { d: line, fill: "none", "stroke-width": 2.2, "stroke-linejoin": "round", "stroke-linecap": "round" }, gLines); ln.style.stroke = "var(--d1)";
+    if (pts.length <= 160) pts.forEach(function (p) { var c = sv("circle", { cx: X(p.day), cy: Y(p.e1), r: pts.length > 60 ? 2 : 2.8, "stroke-width": 1 }, gDots); c.style.fill = "var(--d1)"; c.style.stroke = "var(--ring)"; });
     var rec = e.rec;
     if (rec) {
-      var rc = sv("circle", { cx: X(rec.day), cy: Y(rec.e1), r: 5, "stroke-width": 2 }, svg); rc.style.fill = "var(--d2)"; rc.style.stroke = "var(--surface)";
-      var right = X(rec.day) > W - 170;
-      sv("text", { class: "ref-t", x: X(rec.day) + (right ? -9 : 9), y: Math.max(12, Y(rec.e1) - 8), "text-anchor": right ? "end" : "start" }, svg).textContent = "record " + fmt(rec.e1, 1) + " · " + dFull(rec.day);
+      var hx = X(rec.day), hy = Y(rec.e1);
+      var halo = sv("circle", { class: "halo", cx: hx, cy: hy, r: 11 }, gHi); halo.style.fill = "var(--d2)";
+      var rc = sv("circle", { cx: hx, cy: hy, r: 5, "stroke-width": 2 }, gHi); rc.style.fill = "var(--d2)"; rc.style.stroke = "var(--ring)";
+      var right = hx > W - 170;
+      pill(gHi, hx + (right ? -12 : 12), Math.max(11, hy - 16), "record " + fmt(rec.e1, 1) + " · " + dFull(rec.day), right ? "end" : "start", "val-p rec-p");
     }
-    var cross = sv("line", { class: "cross", y1: m.t, y2: m.t + ph }, svg), dot = sv("circle", { r: 4.5, "stroke-width": 2, opacity: 0 }, svg);
-    dot.style.fill = "var(--d1)"; dot.style.stroke = "var(--surface)";
+    var cross = sv("line", { class: "cross", y1: m.t, y2: m.t + ph }, svg), dot = sv("circle", { r: 5, "stroke-width": 2, opacity: 0 }, svg);
+    dot.style.fill = "var(--d1)"; dot.style.stroke = "var(--ring)";
     var hit = sv("rect", { x: m.l, y: 0, width: pw, height: Hh, fill: "transparent" }, svg);
     var move = function (ev) {
       var r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * (W / r.width), best = pts[0], bd = 1e9;
@@ -3353,7 +3437,7 @@ var BODY = (function () {
       '<div class="hero-v">' + fmt(lastW.weight, 2) + '<span class="u">kg</span></div>' +
       (v ? '<p class="verdict">' + esc(v.t) + '</p>' : sl.weigh.length ? '<p class="verdict">Pas encore assez de pesées pour calculer un rythme : il en faut au moins 5 sur 10 jours.</p>' : "") +
       (f ? '<div class="hero-facts">' + f + '</div>' : "") +
-      '<div class="legend" style="margin-bottom:6px">' + key("dot", "var(--muted)", "pesée") + key("line", "var(--ink)", "moyenne sur 7 jours") + '</div>' +
+      '<div class="legend" style="margin-bottom:6px">' + key("dot", "var(--muted)", "pesée") + key("line", "var(--d1)", "moyenne sur 7 jours") + '</div>' +
       '<div class="chart" id="c-weight"></div></div>';
   }
   function drawWeight(sl) {
@@ -3366,14 +3450,14 @@ var BODY = (function () {
       d0: sl.d0, d1: sl.d1, height: 230, zero: false, pad: 0.2, label: "Poids en kg",
       yFmt: function (v) { return fmt(v, v % 1 ? 1 : 0); },
       series: [
-        { type: "line", name: "pesée", color: "var(--muted)", points: sl.weigh.map(function (d) { return { day: d.day, v: d.weight }; }), dots: true, noLine: true, r: 3.5 },
-        { type: "line", name: "moyenne 7 j", color: "var(--ink)", points: trend, connect: true, width: 2.5 }
+        { type: "line", name: "pesée", color: "var(--muted)", points: sl.weigh.map(function (d) { return { day: d.day, v: d.weight }; }), dots: true, noLine: true, r: 3, dotOpacity: 0.6 },
+        { type: "line", name: "moyenne 7 j", color: "var(--d1)", points: trend, connect: true, width: 2.6, area: true, last: true, lastLabel: function (p) { return fmt(p.v, 1) + " kg"; } }
       ],
       refs: refs, emptyText: "Aucune pesée sur cette période.",
       tip: function (d) {
         var rec = sl.days.filter(function (x) { return x.day === d; })[0], tr = trend.filter(function (x) { return x.day === d; })[0], rows = [];
         if (rec && rec.weight !== null) rows.push({ value: fmt(rec.weight, 2) + " kg", label: "pesée", color: "var(--muted)" });
-        if (tr) rows.push({ value: fmt(tr.v, 2) + " kg", label: "moyenne 7 j", color: "var(--ink)" });
+        if (tr) rows.push({ value: fmt(tr.v, 2) + " kg", label: "moyenne 7 j", color: "var(--d1)" });
         if (!rows.length) rows.push({ value: "–", label: "pas de pesée ce jour" });
         return { title: dLong(d), rows: rows, extra: m.start && rec && rec.weight !== null ? [sfmt(rec.weight - m.start.weight, 2) + " kg depuis le départ"] : [] };
       }
@@ -3388,24 +3472,25 @@ var BODY = (function () {
     var dl = function (k, d, arr, parr) { var c = avg(arr || days, k), p = P ? avg(parr || P.days, k) : null; return c === null || p === null ? "" : sfmt(c - p, d || 0); };
     var pc = function (v, t) { return v === null || !t ? "" : fmt(v / t * 100) + " %"; };
     var u = function (v, unit, d) { return v === null ? "–" : fmt(v, d) + unit; };
-    var row = function (cls, name, sm, val, delta, pct) { return '<div class="lr ' + cls + '"><span class="ln">' + name + (sm ? '<small>' + sm + '</small>' : "") + '</span><span class="lv">' + val + '</span><span class="ld">' + (delta || "") + '</span><span class="lp">' + (pct || "") + '</span></div>'; };
+    var gauge = gaugeHTML;
+    var row = function (cls, name, sm, val, delta, pct, gz) { return '<div class="lr ' + cls + '"><span class="ln">' + name + (sm ? '<small>' + sm + '</small>' : "") + '</span><span class="lv">' + val + '</span><span class="ld">' + (delta || "") + '</span><span class="lp">' + (pct || "") + '</span>' + (gz || "") + '</div>'; };
     var kA = avg(days, "kcal"), pA = avg(days, "prot"), cA = avg(days, "carb"), fA = avg(days, "fat"), fiA = avg(days, "fiber"), bA = avg(days, "burn"), sA = avg(days, "steps");
     var bals = days.filter(function (d) { return d.balance !== null; }), pb = P ? P.days.filter(function (d) { return d.balance !== null; }) : [], balA = avg(bals, "balance"), cum = sum(bals, "balance");
     var perW = sl.sessions.length / (sl.nDays / 7), R = sl.rate;
     var h = '<div class="label" role="group" aria-label="Valeurs moyennes par jour"><div class="label-t">Valeurs moyennes par jour</div>' +
       '<div class="label-s">' + periodName(sl).replace(/^d/, "D") + ", " + food.length + " " + plural(food.length, "jour") + " de repas " + plural(food.length, "saisi") + '</div><div class="label-bar"></div>' +
       '<div class="lr head"><span></span><span></span><span>' + (P ? "vs avant" : "") + '</span><span>objectif</span></div>';
-    h += row("big", "Énergie", "", u(kA, " kcal"), dl("kcal"), pc(kA, C.kcal));
-    h += row("", "Protéines", pA !== null && lw ? fmt(pA / lw, 1) + " g/kg" : "", u(pA, " g"), dl("prot"), pc(pA, C.prot));
+    h += row("big", "Énergie", "", u(kA, " kcal"), dl("kcal"), pc(kA, C.kcal), gauge(kA, C.kcal, "range"));
+    h += row("", "Protéines", pA !== null && lw ? fmt(pA / lw, 1) + " g/kg" : "", u(pA, " g"), dl("prot"), pc(pA, C.prot), gauge(pA, C.prot));
     h += row("", "Glucides", sh ? fmt(sh.c * 100) + " % des kcal" : "", u(cA, " g"), dl("carb"), "");
     h += row("", "Lipides", (sh ? fmt(sh.f * 100) + " % des kcal" : "") + (fA !== null && lw ? ", " + fmt(fA / lw, 1) + " g/kg" : ""), u(fA, " g"), dl("fat"), "");
-    h += row("", "Fibres", count(days, "fiber") < food.length ? count(days, "fiber") + " j. renseignés" : "", u(fiA, " g", 1), dl("fiber", 1), pc(fiA, C.fiber));
+    h += row("", "Fibres", count(days, "fiber") < food.length ? count(days, "fiber") + " j. renseignés" : "", u(fiA, " g", 1), dl("fiber", 1), pc(fiA, C.fiber), gauge(fiA, C.fiber));
     h += '<div class="label-bar mid"></div>';
     h += row("", "Dépense", "mesurée par la montre", u(bA, " kcal"), dl("burn"), "");
     if (R && R.tdee) h += row("sub", "Dépense réelle estimée", "d'après pesées et repas", fmt(Math.round(R.tdee / 10) * 10) + " kcal", "", "");
     h += row("", "Bilan", balA === null ? "" : "cumul " + sfmt(cum) + " kcal", balA === null ? "–" : sfmt(balA) + " kcal", dl("balance", 0, bals, pb), "");
-    h += row("", "Pas", "", fmt(sA), dl("steps"), C.steps ? pc(sA, C.steps) : "");
-    h += row("", "Séances", fmt(perW, 1) + " par semaine", fmt(sl.sessions.length), P ? sfmt(sl.sessions.length - P.sessions.length) : "", sl.nDays >= 7 ? pc(perW, C.sessions) : "");
+    h += row("", "Pas", "", fmt(sA), dl("steps"), C.steps ? pc(sA, C.steps) : "", C.steps ? gauge(sA, C.steps) : "");
+    h += row("", "Séances", fmt(perW, 1) + " par semaine", fmt(sl.sessions.length), P ? sfmt(sl.sessions.length - P.sessions.length) : "", sl.nDays >= 7 ? pc(perW, C.sessions) : "", sl.nDays >= 7 ? gauge(perW, C.sessions) : "");
     h += '<div class="label-foot">Objectifs : ' + fmt(C.kcal) + " kcal, " + fmt(C.prot) + " g de protéines, " + fmt(C.fiber) + " g de fibres" + (C.steps ? ", " + fmt(C.steps) + " pas" : "") + " et " + fmt(C.sessions) + " " + plural(C.sessions, "séance") + " par semaine." +
       (P ? " « vs avant » : écart avec les " + sl.nDays + " jours précédents." : "") + (balA !== null ? " Le bilan cumulé équivaut à environ " + fmt(Math.abs(cum) / KCAL_PER_KG, 2) + " kg de graisse." : "") + '</div></div>';
     return h;
