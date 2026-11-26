@@ -2328,65 +2328,152 @@ var BODY = (function () {
 
   /* ---------- Aperçu ---------- */
 
+  /* ---------- Bilan : jour par jour (style verre) ----------
+     Grille de bulles colorées selon la donnée choisie (calories, protéines, bilan, pas),
+     marqueurs de séance et de pesée, anneau de sélection qui glisse d'un jour à l'autre,
+     et panneau de détail du jour choisi. Toucher un jour suffit : plus besoin d'infobulle. */
+  var CAL_METRICS = [["kcal", "Calories"], ["prot", "Protéines"], ["bal", "Bilan"], ["steps", "Pas"]];
+  var CAL_KEY = "suivi-repas-entrainement:jour-par-jour", CAL_RO = null;
+  function calMetric() { var v = sget(CAL_KEY); return CAL_METRICS.some(function (x) { return x[0] === v; }) ? v : "kcal"; }
+  function kfmt(v) { return Math.abs(v) >= 1000 ? fmt(v / 1000, 1) + "k" : fmt(v); }
+  function calCell(rec, metric, T, C) {
+    var mix = function (v, a) { return "color-mix(in oklab, var(" + v + ") " + Math.round(a) + "%, var(--surface))"; };
+    var none = { bg: "var(--surface-2)", v: "–", vc: "–", hit: false };
+    if (!rec) return none;
+    if (metric === "prot") {
+      if (rec.prot === null) return none;
+      var p = rec.prot / T.prot;
+      return { bg: mix("--d2", 10 + Math.min(1.1, p) * 48), v: fmt(rec.prot) + " g", vc: fmt(rec.prot), hit: p >= 1 };
+    }
+    if (metric === "bal") {
+      if (rec.balance === null) return none;
+      var b = rec.balance, ab = Math.min(1, Math.abs(b) / 1200);
+      return { bg: Math.abs(b) < 100 ? "var(--cal-mid)" : mix(b < 0 ? "--d1" : "--d2", 16 + ab * 48), v: sfmt(b), vc: (b > 0 ? "+" : b < 0 ? "−" : "") + kfmt(Math.abs(b)), hit: false };
+    }
+    if (metric === "steps") {
+      if (rec.steps === null) return none;
+      var goal = C.steps || 10000, s = rec.steps / goal;
+      return { bg: mix("--d3", 10 + Math.min(1.1, s) * 48), v: fmt(rec.steps), vc: kfmt(rec.steps), hit: s >= 1 };
+    }
+    if (rec.kcal === null) return none;
+    var r = (rec.kcal - T.kcal) / T.kcal, a = Math.min(1, Math.max(0, (Math.abs(r) - 0.05) / 0.25));
+    return { bg: Math.abs(r) < 0.05 ? "var(--cal-mid)" : mix(r < 0 ? "--d1" : "--d2", 18 + a * 46), v: fmt(rec.kcal), vc: kfmt(rec.kcal), hit: false };
+  }
+  function calLegend(metric, T, C) {
+    var sw = function (list) { return '<span class="dramp" aria-hidden="true">' + list.map(function (c) { return '<i style="background:' + c + '"></i>'; }).join("") + '</span>'; };
+    var mix = function (v, a) { return "color-mix(in oklab, var(" + v + ") " + a + "%, var(--surface))"; };
+    var scale;
+    if (metric === "prot") scale = '<span>peu</span>' + sw([mix("--d2", 14), mix("--d2", 30), mix("--d2", 46), mix("--d2", 62)]) + '<span>cible ' + fmt(T.prot) + ' g</span><span class="dk"><i class="dk-hit"></i>cible atteinte</span>';
+    else if (metric === "bal") scale = '<span>déficit</span>' + sw([mix("--d1", 64), mix("--d1", 34), "var(--cal-mid)", mix("--d2", 34), mix("--d2", 64)]) + '<span>surplus</span>';
+    else if (metric === "steps") scale = '<span>peu</span>' + sw([mix("--d3", 14), mix("--d3", 30), mix("--d3", 46), mix("--d3", 62)]) + '<span>' + fmt(C.steps || 10000) + ' pas</span><span class="dk"><i class="dk-hit"></i>objectif atteint</span>';
+    else scale = '<span>sous la cible</span>' + sw([mix("--d1", 64), mix("--d1", 34), "var(--cal-mid)", mix("--d2", 34), mix("--d2", 64)]) + '<span>au-dessus</span><span class="dk">gris : à ±5 %</span>';
+    return scale + '<span class="dk"><i class="dk-s"></i>séance</span><span class="dk"><i class="dk-w"></i>pesée</span>';
+  }
+  function dayDetailHTML(d) {
+    if (d === null || d === undefined) return '<p class="dd-none">Aucun jour avec des données sur cette période.</p>';
+    var m = state.model, T = m.targets, C = state.cfg || cfg(), rec = null;
+    m.days.forEach(function (x) { if (x.day === d) rec = x; });
+    var ses = m.sessions.filter(function (s) { return s.day === d; });
+    var t = dLong(d); t = t.charAt(0).toUpperCase() + t.slice(1);
+    var h = '<div class="dd-h"><b>' + t + '</b>' + ses.map(function (s) { return '<span class="dd-chip">' + esc(s.name) + '</span>'; }).join("") + '</div>';
+    if (rec && rec.kcal !== null) {
+      h += '<div class="dd-k"><span class="dd-big">' + fmt(rec.kcal) + '<small>kcal</small></span><span class="dd-pc">' + fmt(rec.kcal / T.kcal * 100) + ' % de la cible · ' + sfmt(rec.kcal - T.kcal) + '</span></div>' + gaugeHTML(rec.kcal, T.kcal, "range");
+      if (rec.prot !== null && rec.carb !== null && rec.fat !== null) {
+        var p = rec.prot * 4, c = rec.carb * 4, f = rec.fat * 9, tt = p + c + f || 1;
+        h += '<div class="dd-mac" role="img" aria-label="Part des kcal : protéines ' + fmt(p / tt * 100) + ' %, glucides ' + fmt(c / tt * 100) + ' %, lipides ' + fmt(f / tt * 100) + ' %"><i style="flex:' + p.toFixed(0) + ';background:var(--d2)"></i><i style="flex:' + c.toFixed(0) + ';background:var(--d3)"></i><i style="flex:' + f.toFixed(0) + ';background:var(--d1)"></i></div>' +
+          '<div class="dd-macl"><span><i style="background:var(--d2)"></i>Protéines ' + fmt(rec.prot) + ' g</span><span><i style="background:var(--d3)"></i>Glucides ' + fmt(rec.carb) + ' g</span><span><i style="background:var(--d1)"></i>Lipides ' + fmt(rec.fat) + ' g</span></div>';
+      }
+    } else if (rec && rec.excluded) h += '<p class="dd-none">Repas exclus des moyennes ce jour-là (saisie incomplète).</p>';
+    else h += '<p class="dd-none">Repas non saisis ce jour-là.</p>';
+    var tiles = [];
+    if (rec && rec.prot !== null) { var lw = lastWeightBefore(m, d); tiles.push(["Protéines", fmt(rec.prot) + " g", (lw ? fmt(rec.prot / lw, 1) + " g/kg · " : "") + fmt(rec.prot / T.prot * 100) + " % de la cible", gaugeHTML(rec.prot, T.prot)]); }
+    if (rec && rec.weight !== null) tiles.push(["Pesée", fmt(rec.weight, 2) + " kg", m.start ? sfmt(rec.weight - m.start.weight, 2) + " kg depuis le départ" : "", ""]);
+    if (rec && rec.steps !== null) tiles.push(["Pas", fmt(rec.steps), C.steps ? fmt(rec.steps / C.steps * 100) + " % de l'objectif" : "", C.steps ? gaugeHTML(rec.steps, C.steps) : ""]);
+    if (rec && rec.burn !== null) tiles.push(["Dépense", fmt(rec.burn) + " kcal", rec.rest !== null && rec.active !== null ? fmt(rec.rest) + " repos + " + fmt(rec.active) + " activité" : "", ""]);
+    if (rec && rec.balance !== null) tiles.push(["Bilan", sfmt(rec.balance) + " kcal", rec.balance < 0 ? "déficit" : "surplus", ""]);
+    ses.forEach(function (s) { tiles.push(["Séance", esc(s.name), s.doneSets + " séries · " + tonnes(s.volume) + (s.minutes ? " · " + dur(s.minutes) : ""), ""]); });
+    if (tiles.length) h += '<div class="dd-tiles">' + tiles.map(function (x) { return '<div class="dd-t"><span>' + x[0] + '</span><b>' + x[1] + '</b>' + (x[3] || "") + (x[2] ? '<small>' + x[2] + '</small>' : "") + '</div>'; }).join("") + '</div>';
+    return h;
+  }
   function calendarHTML(sl) {
-    var m = state.model, T = m.targets;
+    var m = state.model, T = m.targets, C = state.cfg || cfg(), metric = calMetric();
     var byDay = {}; m.days.forEach(function (d) { byDay[d.day] = d; });
     var sesBy = {}; m.sessions.forEach(function (s) { (sesBy[s.day] = sesBy[s.day] || []).push(s); });
-    var h = '<div class="cal" role="grid" aria-label="Semainier"><div></div>';
-    ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."].forEach(function (x) { h += '<div class="cal-h">' + x + '</div>'; });
+    // jour choisi : celui gardé s'il est dans la période, sinon le dernier jour avec des données
+    var sel = state.calDay;
+    if (sel === undefined || sel === null || sel < sl.d0 || sel > sl.d1 || !(byDay[sel] || sesBy[sel])) {
+      sel = null; for (var dd = sl.d1; dd >= sl.d0; dd--) if (byDay[dd] || sesBy[dd]) { sel = dd; break; }
+    }
+    state.calDay = sel;
+    var h = '<div class="seg seg-sm dseg" role="radiogroup" aria-label="Donnée affichée" id="calMetric">' + CAL_METRICS.map(function (x) {
+      return '<button type="button" role="radio" data-m="' + x[0] + '" aria-checked="' + (x[0] === metric ? "true" : "false") + '">' + x[1] + '</button>';
+    }).join("") + '</div>';
+    h += '<div class="dwrap"><div class="dleft"><div class="dcal" role="group" aria-label="Jour par jour"><div class="dhd"></div>' + ["L", "M", "M", "J", "V", "S", "D"].map(function (x) { return '<div class="dhd">' + x + '</div>'; }).join("");
+    var i = 0;
     for (var w = SR.monday(sl.d0); w <= sl.d1; w += 7) {
-      h += '<div class="cal-w"><b>S' + isoWeek(w) + '</b>' + dShort(w) + '</div>';
-      for (var d = w; d < w + 7; d++) {
+      h += '<div class="dwk">' + isoWeek(w) + '</div>';
+      for (var d = w; d < w + 7; d++, i++) {
         var rec = byDay[d], ses = sesBy[d] || [], inP = d >= sl.d0 && d <= sl.d1;
-        if (!inP || (!rec && !ses.length)) {
-          h += '<div class="cell' + (d > sl.d1 || !inP ? " out" : "") + '"><div class="cell-d"><span>' + D(d).getUTCDate() + '</span></div></div>';
-          continue;
-        }
-        var bg = "";
-        if (rec && rec.kcal !== null) {
-          var r = (rec.kcal - T.kcal) / T.kcal;
-          if (Math.abs(r) < 0.05) bg = "var(--cal-mid)";
-          else { var a = Math.min(1, (Math.abs(r) - 0.05) / 0.25); bg = "color-mix(in oklab, var(" + (r < 0 ? "--d1" : "--d2") + ") " + Math.round(14 + a * 40) + "%, var(--surface))"; }
-        }
-        var pw = rec && rec.prot !== null ? Math.min(100, rec.prot / T.prot * 100) : 0;
-        h += '<div class="cell has" data-day="' + d + '" tabindex="0"' + (bg ? ' style="background:' + bg + '"' : "") + '>' +
-          '<div class="cell-d"><span>' + D(d).getUTCDate() + '</span>' + (rec && rec.weight !== null ? '<span class="w">' + fmt(rec.weight, 1) + ' kg</span>' : "") + '</div>' +
-          (rec && rec.kcal !== null ? '<div class="cell-k">' + fmt(rec.kcal) + '<small>kcal</small></div><div class="cell-p" aria-hidden="true"><span style="width:' + pw.toFixed(0) + '%"></span></div>' : '<div class="cell-k" style="color:var(--muted)">–</div>') +
-          (ses.length ? '<div class="cell-s"><i class="disc" style="--pc:var(--ink)"></i><span>' + esc(ses.map(function (s) { return s.name; }).join(" + ")) + '</span></div>' : "") +
-          '</div>';
+        if (!inP || (!rec && !ses.length)) { h += '<div class="dcell off' + (inP ? "" : " out") + '" style="--i:' + i + '"><span class="dn">' + D(d).getUTCDate() + '</span></div>'; continue; }
+        var c = calCell(rec, metric, T, C), lab = dLong(d);
+        if (rec && rec.kcal !== null) lab += ", " + fmt(rec.kcal) + " kcal";
+        if (rec && rec.prot !== null) lab += ", " + fmt(rec.prot) + " g de protéines";
+        if (rec && rec.weight !== null) lab += ", pesée " + fmt(rec.weight, 1) + " kg";
+        if (ses.length) lab += ", séance " + ses.map(function (s) { return s.name; }).join(" et ");
+        h += '<button type="button" class="dcell' + (c.hit ? " hit" : "") + '" data-day="' + d + '" style="--i:' + i + ';background-color:' + c.bg + '" aria-pressed="' + (d === sel ? "true" : "false") + '" aria-label="' + esc(lab) + '">' +
+          '<span class="dn">' + D(d).getUTCDate() + '</span><b class="dv">' + c.v + '</b><b class="dvc">' + c.vc + '</b>' +
+          (rec && rec.weight !== null ? '<i class="dw" aria-hidden="true"></i>' : "") + (ses.length ? '<i class="ds" aria-hidden="true"></i>' : "") + '</button>';
       }
     }
-    h += '</div>';
-    var ramp = [["--d1", 54], ["--d1", 24], [null, 0], ["--d2", 24], ["--d2", 54]].map(function (x) {
-      return '<i style="background:' + (x[0] ? "color-mix(in oklab, var(" + x[0] + ") " + x[1] + "%, var(--surface))" : "var(--cal-mid)") + '"></i>';
-    }).join("");
-    h += '<div class="cal-legend"><span class="lg">Calories sous la cible<span class="ramp" aria-hidden="true">' + ramp + '</span>au-dessus</span><span class="lg">gris : à ±5\u00a0%</span><span class="lg"><i class="k-rect" style="--kc:var(--d2);height:3px;width:14px"></i>protéines vs ' + fmt(T.prot) + ' g</span><span class="lg"><i class="disc" style="--pc:var(--ink)"></i>séance</span></div>';
+    h += '<span class="dring" aria-hidden="true"></span></div><div class="dleg" id="calLeg">' + calLegend(metric, T, C) + '</div></div>';
+    h += '<div class="dday" id="calDay" aria-live="polite">' + dayDetailHTML(sel) + '</div></div>';
     return h;
   }
   function bindCalendar(root) {
-    var m = state.model, T = m.targets;
-    var byDay = {}; m.days.forEach(function (d) { byDay[d.day] = d; });
-    root.querySelectorAll(".cell.has").forEach(function (c) {
-      var d = +c.getAttribute("data-day");
-      var show = function (x, y) {
-        var rec = byDay[d], rows = [], extra = [];
-        if (rec) {
-          if (rec.kcal !== null) rows.push({ value: fmt(rec.kcal) + " kcal", label: "apport (" + sfmt(rec.kcal - T.kcal) + " vs cible)", color: "var(--d1)" });
-          if (rec.prot !== null) rows.push({ value: fmt(rec.prot, 1) + " g", label: "protéines", color: "var(--d2)" });
-          if (rec.burn !== null) rows.push({ value: fmt(rec.burn) + " kcal", label: "dépense Garmin", color: "var(--d5)" });
-          if (rec.balance !== null) rows.push({ value: sfmt(rec.balance) + " kcal", label: "bilan" });
-          if (rec.weight !== null) rows.push({ value: fmt(rec.weight, 2) + " kg", label: "pesée" });
-          if (rec.steps !== null) rows.push({ value: fmt(rec.steps), label: "pas" });
-        }
-        m.sessions.filter(function (s) { return s.day === d; }).forEach(function (s) { extra.push("Séance " + s.name + " : " + s.doneSets + " séries, " + tonnes(s.volume) + (s.minutes ? ", " + dur(s.minutes) : "")); });
-        var t = dLong(d); showTip(t.charAt(0).toUpperCase() + t.slice(1), rows, extra, x, y);
+    var grid = root.querySelector(".dcal"); if (!grid) return;
+    var ring = grid.querySelector(".dring"), cells = Array.prototype.slice.call(grid.querySelectorAll("button.dcell"));
+    var place = function (instant) {
+      var c = grid.querySelector('button.dcell[aria-pressed="true"]');
+      if (!c) { ring.style.opacity = 0; return; }
+      if (instant) ring.style.transition = "none";
+      ring.style.width = c.offsetWidth + "px"; ring.style.height = c.offsetHeight + "px";
+      ring.style.transform = "translate(" + c.offsetLeft + "px," + c.offsetTop + "px)"; ring.style.opacity = 1;
+      if (instant) { void ring.offsetWidth; ring.style.transition = ""; }
+    };
+    var select = function (c) {
+      cells.forEach(function (x) { x.setAttribute("aria-pressed", x === c ? "true" : "false"); });
+      state.calDay = +c.getAttribute("data-day");
+      var box = $("#calDay"); if (box) box.innerHTML = dayDetailHTML(state.calDay);
+      place(false);
+    };
+    cells.forEach(function (c) {
+      c.onclick = function () { select(c); };
+      c.onkeydown = function (e) {
+        var step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key]; if (!step) return;
+        e.preventDefault();
+        var t = grid.querySelector('button.dcell[data-day="' + (+c.getAttribute("data-day") + step) + '"]');
+        if (t) { t.focus(); select(t); }
       };
-      c.addEventListener("pointerenter", function (e) { show(e.clientX, e.clientY); });
-      c.addEventListener("pointermove", function (e) { show(e.clientX, e.clientY); });
-      c.addEventListener("pointerleave", hideTip);
-      c.addEventListener("focus", function () { var r = c.getBoundingClientRect(); show(r.right, r.top + 10); });
-      c.addEventListener("blur", hideTip);
     });
+    var recolor = function (metric) {
+      var m = state.model, T = m.targets, C = state.cfg || cfg(), byDay = {};
+      m.days.forEach(function (d) { byDay[d.day] = d; });
+      cells.forEach(function (c) {
+        var cc = calCell(byDay[+c.getAttribute("data-day")], metric, T, C);
+        c.style.backgroundColor = cc.bg; c.classList.toggle("hit", !!cc.hit);
+        c.querySelector(".dv").textContent = cc.v; c.querySelector(".dvc").textContent = cc.vc;
+      });
+      var lg = $("#calLeg"); if (lg) lg.innerHTML = calLegend(metric, T, C);
+    };
+    root.querySelectorAll("#calMetric button").forEach(function (b) {
+      b.onclick = function () {
+        var metric = b.getAttribute("data-m"); sset(CAL_KEY, metric);
+        root.querySelectorAll("#calMetric button").forEach(function (x) { x.setAttribute("aria-checked", x === b ? "true" : "false"); });
+        recolor(metric);
+      };
+    });
+    place(true);
+    if (window.ResizeObserver) { if (CAL_RO) CAL_RO.disconnect(); CAL_RO = new ResizeObserver(function () { place(true); }); CAL_RO.observe(grid); }
   }
 
 
@@ -3661,7 +3748,7 @@ var BODY = (function () {
       card(null, "Constats", periodName(sl).replace(/^d/, "D"), "", '<ul class="facts">' + (fs || '<li>' + ICON.info + '<div>Pas assez de données sur la période.</div></li>') + '</ul>') +
       card(null, "Régularité", "Sur les " + sl.nDays + " jours de la période", "", adherenceHTML(sl)) + '</div>' +
       (state.off ? "" : nextCard()) +
-      card(null, "Jour par jour", "Calories, protéines, pesées et séances", "", calendarHTML(sl)) +
+      card(null, "Jour par jour", "Touche un jour pour voir son détail", "", calendarHTML(sl)) +
       (last ? card(null, "Dernière séance de la période", "", '<button type="button" class="linkbtn" data-go="seances">Toutes les séances</button>', '<div class="sessions">' + sessionHTML(last, true) + '</div>') : "");
     bindCalendar(el); bindSessions(el); bindNext(el);
     el.querySelectorAll("[data-go]").forEach(function (b) { b.onclick = function () { setTab(b.getAttribute("data-go")); }; });

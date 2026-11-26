@@ -5,12 +5,13 @@
    panneaux, graphiques) sans rien changer à sa logique.
 
    Fluidité :
-   - rien n'est recalculé pendant le défilement (une seule classe, en haut de page) ;
+   - pendant le défilement : une parallaxe du fond (un seul élément) et deux classes ;
    - une seule animation par bloc, et par calque de graphique (barres,
      courbes, points), jamais une par barre ;
    - uniquement des transformations et de l'opacité, que le téléphone
      confie à la carte graphique ;
-   - fond fixe sur téléphone, dérive lente seulement sur ordinateur.
+   - fond qui dérive lentement : deux taches sur téléphone, trois sur ordinateur ;
+   - reflets et lueurs : un petit calque par carte, animé une fois (transformations).
    Tout est désactivé si le système demande de réduire les animations.
    ===================================================================== */
 (function () {
@@ -25,31 +26,63 @@
   function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
   function anim(el, kf, o) { if (!el || !el.animate) return null; try { return el.animate(kf, Object.assign({ fill: "backwards" }, o)); } catch (e) { return null; } }
   function fade(el, d, dur) { return anim(el, [{ opacity: 0 }, { opacity: 1 }], { duration: dur || 500, delay: d, easing: "ease-out" }); }
-  function isMine(n) { return n.nodeType === 1 && n.classList && (n.classList.contains("rp") || n.classList.contains("ind") || n.classList.contains("glint")); }
+  var MINE = ["rp", "ind", "glint", "fx", "fx-glint", "fx-glow"];
+  function isMine(n) { return n.nodeType === 1 && !!n.classList && MINE.some(function (c) { return n.classList.contains(c); }); }
 
-  /* ---------- Fond : fixe sur téléphone ; sur ordinateur, trois taches dérivent lentement ---------- */
+  /* ---------- Fond : les taches dérivent lentement (2 sur téléphone, 3 sur ordinateur), parallaxe légère ---------- */
   function initBackground() {
     var bg = $(".bg"); if (!bg || reduce) return;
     anim(bg, [{ opacity: 0.35, transform: "scale(1.08)" }, { opacity: 1, transform: "none" }], { duration: 1500, easing: SOFT });
-    if (!fine || innerWidth < 861) return;
-    bg.classList.add("liquid");
+    var big = fine && innerWidth >= 861;
+    bg.classList.add("liquid"); if (!big) bg.classList.add("lite");
     var paths = [
-      [[0, 0, 1], [-8, 6, 1.1], [-3, -4, .96], [5, 3, 1.12]],
-      [[0, 0, 1], [-6, -7, 1.12], [4, -3, .95], [-2, 5, 1.05]],
-      [[0, 0, 1], [6, -6, 1.08], [9, 3, 1.15], [-3, -2, .97]]
+      [[0, 0, 1], [-9, 7, 1.1], [-3, -5, .95], [6, 3, 1.12]],
+      [[0, 0, 1], [-7, -8, 1.12], [5, -3, .94], [-2, 6, 1.06]],
+      [[0, 0, 1], [7, -6, 1.08], [10, 4, 1.15], [-3, -2, .97]]
     ];
-    [2, 3, 4].forEach(function (n, i) {
+    (big ? [2, 3, 4] : [2, 3]).forEach(function (n, i) {
       var b = document.createElement("i"); b.className = "blob b" + n; bg.appendChild(b);
       var kf = paths[i].concat([paths[i][0]]).map(function (p) { return { transform: "translate3d(" + p[0] + "%," + p[1] + "%,0) scale(" + p[2] + ")" }; });
-      try { b.animate(kf, { duration: 30000 + i * 6000, iterations: Infinity, easing: "ease-in-out", delay: -i * 5000 }); } catch (e) { }
+      try { b.animate(kf, { duration: 34000 + i * 8000, iterations: Infinity, easing: "ease-in-out", delay: -i * 6000 }); } catch (e) { }
     });
-    var tx = 0, ty = 0, cx = 0, cy = 0, raf = 0;
+    var tx = 0, ty = 0, cx = 0, cy = 0, sy = window.scrollY, csy = sy, raf = 0;
     function tick() {
-      cx += (tx - cx) * 0.06; cy += (ty - cy) * 0.06;
-      bg.style.translate = (-cx * 14).toFixed(2) + "px " + (-cy * 14).toFixed(2) + "px";
-      raf = (Math.abs(tx - cx) > 0.002 || Math.abs(ty - cy) > 0.002) ? requestAnimationFrame(tick) : 0;
+      cx += (tx - cx) * 0.06; cy += (ty - cy) * 0.06; csy += (sy - csy) * 0.18;
+      var sc = Math.max(-40, Math.min(40, -csy * 0.04));
+      bg.style.translate = (-cx * 14).toFixed(1) + "px " + (-cy * 14 + sc).toFixed(1) + "px";
+      raf = (Math.abs(tx - cx) > 0.002 || Math.abs(ty - cy) > 0.002 || Math.abs(sy - csy) > 0.5) ? requestAnimationFrame(tick) : 0;
     }
-    window.addEventListener("pointermove", function (e) { tx = e.clientX / innerWidth * 2 - 1; ty = e.clientY / innerHeight * 2 - 1; if (!raf) raf = requestAnimationFrame(tick); }, { passive: true });
+    var kick = function () { if (!raf) raf = requestAnimationFrame(tick); };
+    if (fine) window.addEventListener("pointermove", function (e) { tx = e.clientX / innerWidth * 2 - 1; ty = e.clientY / innerHeight * 2 - 1; kick(); }, { passive: true });
+    window.addEventListener("scroll", function () { sy = window.scrollY; kick(); }, { passive: true });
+  }
+
+  /* ---------- Reflets et lueurs : un calque .fx par carte, animé une seule fois ---------- */
+  var FXSEL = ".card,.hero,.label,.stats>.stat,.panel>.sessions>.ses,.start";
+  function fxLayer(el) {
+    var f = el.querySelector(":scope > .fx");
+    if (!f) { f = document.createElement("span"); f.className = "fx"; f.setAttribute("aria-hidden", "true"); el.appendChild(f); }
+    return f;
+  }
+  function glint(el, d) {
+    if (reduce || !el.matches || !el.matches(FXSEL)) return;
+    var g = document.createElement("i"); g.className = "fx-glint"; fxLayer(el).appendChild(g);
+    var a = anim(g, [{ transform: "translateX(-130%) skewX(-14deg)" }, { transform: "translateX(330%) skewX(-14deg)" }], { duration: 1250, delay: d, easing: "cubic-bezier(.4,0,.2,1)", fill: "both" });
+    if (a) a.onfinish = function () { g.remove(); }; else g.remove();
+  }
+  function initGlow() {
+    if (reduce) return;
+    // lueur sous le doigt sur les cartes (les boutons ont déjà leur onde)
+    document.addEventListener("pointerdown", function (e) {
+      if (e.button > 0 || !e.target.closest) return;
+      if (e.target.closest(".btn,.tab,.seg button,.pnav,.chipb,.mbtn,.ses-h,.dcell,input,select,textarea,a")) return;
+      var c = e.target.closest(FXSEL); if (!c) return;
+      var r = c.getBoundingClientRect(), g = document.createElement("i"); g.className = "fx-glow";
+      g.style.left = (e.clientX - r.left) + "px"; g.style.top = (e.clientY - r.top) + "px";
+      fxLayer(c).appendChild(g);
+      var a = anim(g, [{ transform: "scale(.25)", opacity: 1 }, { transform: "scale(1.5)", opacity: 0 }], { duration: 750, easing: "cubic-bezier(.2,.7,.3,1)", fill: "none" });
+      if (a) a.onfinish = function () { g.remove(); }; else g.remove();
+    }, { passive: true });
   }
 
   /* ---------- Lumière : projecteur sous la souris (ordinateur) ; barre collante ---------- */
@@ -203,7 +236,7 @@
 
   /* ---------- Contenu d'un bloc qui entre ---------- */
   var COUNT = ".hero-v,.stat-v,.hero-facts b";
-  var GROW = ".adh-t span,.htrack .seg-p,.htrack .seg-s,.mbtn .mt span,.wd-t span,.bal-t span,.lgauge i,.cell-p span";
+  var GROW = ".adh-t span,.htrack .seg-p,.htrack .seg-s,.mbtn .mt span,.wd-t span,.bal-t span,.lgauge i,.dd-mac";
   var LIST = ".facts li,.nx";
   function inner(b, d, key, soft) {
     $$(".chart", b).forEach(function (ch) { var s = ch.querySelector("svg"); if (s) svgEnter(s, d, soft); ch._mw = ch._w; });
@@ -215,13 +248,15 @@
     if (!soft) $$(LIST, b).slice(0, 6).forEach(function (el, i) {
       anim(el, [{ opacity: 0, transform: "translateX(-12px)" }, { opacity: 1, transform: "none" }], { duration: 560, delay: d + 160 + i * 45, easing: SOFT });
     });
-    // reflet qui balaie la carte du poids (un seul élément, transformé)
-    var h = !soft && (b.classList.contains("hero") ? b : b.querySelector(".hero"));
-    if (h) {
-      var gl = document.createElement("span"); gl.className = "glint"; gl.setAttribute("aria-hidden", "true"); h.appendChild(gl);
-      var a = anim(gl, [{ transform: "translateX(-120%) skewX(-12deg)" }, { transform: "translateX(320%) skewX(-12deg)" }], { duration: 1300, delay: d + 350, easing: "cubic-bezier(.4,0,.2,1)", fill: "both" });
-      if (a) a.onfinish = function () { gl.remove(); }; else gl.remove();
-    }
+    // reflet sur les grandes cartes (les tuiles de chiffres ont déjà leurs compteurs)
+    if (!soft && !b.matches(".stats>.stat")) glint(b, d + 320);
+    // vague sur le calendrier : les bulles apparaissent ligne après ligne
+    var cal = b.querySelector(".dcal");
+    if (cal && !soft) Array.prototype.forEach.call(cal.children, function (c, idx) {
+      if (!c.classList.contains("dcell")) return;
+      var row = Math.floor(idx / 8), col = idx % 8;
+      anim(c, [{ opacity: 0, transform: "scale(.5)" }, { opacity: 1, transform: "scale(1.06)", offset: 0.6 }, { transform: "none" }], { duration: 560, delay: d + 150 + (row + col) * 28, easing: SOFT });
+    });
   }
   function reveal(b, d, dir, soft) {
     var p = b.closest(".panel"), key = (p ? p.id : "") + "|" + (b._bi === undefined ? b.className : b._bi);
@@ -293,6 +328,7 @@
         if (isMine(c)) return;
         anim(c, [{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "none" }], { duration: 400, delay: i * 30, easing: SOFT });
       });
+      $$(GROW, el).slice(0, 8).forEach(function (g, i) { g.style.transformOrigin = "left center"; anim(g, [{ transform: "scaleX(0)" }, { transform: "none" }], { duration: 700, delay: 80 + i * 25, easing: SPRING }); });
     });
     Q.opened.forEach(function (b) {
       if (reduce || b.hidden) return;
@@ -338,6 +374,19 @@
     schedule();
   }
 
+  /* ---------- Barre d'onglets : plus discrète quand on descend (téléphone) ---------- */
+  function initTabsMin() {
+    if (reduce) return;
+    var lastY = window.scrollY, acc = 0, min = false;
+    var set = function (v) { if (v !== min) { min = v; document.body.classList.toggle("tabs-min", v); } };
+    window.addEventListener("scroll", function () {
+      var y = window.scrollY, dy = y - lastY; lastY = y;
+      if (innerWidth > 860 || y < 90) { acc = 0; set(false); return; }
+      acc = (dy > 0) === (acc > 0) ? acc + dy : dy;
+      if (acc > 36) set(true); else if (acc < -16) set(false);
+    }, { passive: true });
+  }
+
   /* ---------- Superpositions : message, dialogue, bandeau Dropbox, dépôt de fichiers ---------- */
   function initOverlays() {
     if (reduce) return;
@@ -377,7 +426,7 @@
   /* ---------- Première apparition de l'en-tête ---------- */
   function headerIn() {
     if (reduce) return;
-    anim($(".brand-name"), [{ opacity: 0, transform: "translateY(14px)" }, { opacity: 1, transform: "none" }], { duration: 900, delay: 60, easing: SOFT });
+    anim($(".brand-name"), [{ opacity: 0, transform: "translateY(14px)", filter: "blur(8px)" }, { opacity: 1, transform: "none", filter: "blur(0)" }], { duration: 950, delay: 60, easing: SOFT });
     anim($(".brand-sub"), [{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "none" }], { duration: 750, delay: 180, easing: SOFT });
     $$(".top-act > .btn").forEach(function (b, i) { anim(b, [{ opacity: 0, transform: "translateY(10px) scale(.92)" }, { opacity: 1, transform: "none" }], { duration: 750, delay: 240 + i * 70, easing: SPRING }); });
     anim($(".tabs"), [{ opacity: 0, transform: "translateY(18px) scale(.94)" }, { opacity: 1, transform: "none" }], { duration: 900, delay: 280, easing: SPRING });
@@ -385,7 +434,7 @@
   }
 
   /* ---------- Démarrage ---------- */
-  initBackground(); initLight(); initTouch(); initReveal(); initObserve(); initOverlays(); headerIn();
+  initBackground(); initLight(); initTouch(); initGlow(); initReveal(); initObserve(); initTabsMin(); initOverlays(); headerIn();
   document.documentElement.classList.toggle("mo-wait", false);
   syncInd(false);
   var rz = 0;
