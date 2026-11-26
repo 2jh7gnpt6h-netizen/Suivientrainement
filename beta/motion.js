@@ -247,6 +247,10 @@
       if (g) { g.style.transformBox = "view-box"; g.style.transformOrigin = "0 " + (parseFloat(g.getAttribute("data-y0")) || 0) + "px"; anim(g, [{ transform: "scaleY(0)" }, { transform: "none" }], { duration: soft ? 600 : 850, delay: dd, easing: SPRING }); }
       else anim(sv, [{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }], { duration: soft ? 600 : 1000, delay: dd, easing: SOFT });
     });
+    $$(".wb i", b).slice(0, 16).forEach(function (el, i) {
+      el.style.transformOrigin = "center bottom";
+      anim(el, [{ transform: "scaleY(0)" }, { transform: "none" }], { duration: soft ? 600 : 850, delay: d + (soft ? 60 : 280) + i * 45, easing: SPRING });
+    });
     $$(".donut .dn", b).forEach(function (g) {
       g.style.transformBox = "view-box"; g.style.transformOrigin = "18px 18px";
       anim(g, [{ transform: "rotate(-140deg)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: soft ? 600 : 1100, delay: d + 300, easing: SPRING });
@@ -315,15 +319,16 @@
 
   /* ---------- Observation de la page ---------- */
   var TABS = ["bilan", "nutrition", "seances", "corps", "historique", "reglages"];
-  var lastTab = document.body.getAttribute("data-tab"), dirNext = 0, first = true, lastPanel = null, tabChanged = false;
+  var lastTab = document.body.getAttribute("data-tab"), dirNext = 0, first = true, lastPanel = null, tabChanged = false, swipeDir = 0;
   var Q = { panels: new Set(), charts: new Set(), subs: new Set(), boxes: new Set(), opened: new Set() }, qRaf = 0;
   function schedule() { if (!qRaf) qRaf = requestAnimationFrame(flush); }
   function flush() {
     qRaf = 0;
     var entering = [];
     Q.panels.forEach(function (p) { if (!p.hidden) entering.push(p); });
-    entering.forEach(function (p) { panelEnter(p, dirNext, !first && !tabChanged && p === lastPanel); lastPanel = p; });
-    if (entering.length) { dirNext = 0; tabChanged = false; }
+    // après un glissement, le nouveau contenu arrive du côté opposé, comme un carrousel
+    entering.forEach(function (p) { panelEnter(p, swipeDir || dirNext, !swipeDir && !first && !tabChanged && p === lastPanel); lastPanel = p; });
+    if (entering.length) { dirNext = 0; tabChanged = false; swipeDir = 0; }
     var inEntering = function (el) { return entering.some(function (p) { return p.contains(el); }); };
     Q.charts.forEach(function (ch) {
       if (inEntering(ch) || !ch.isConnected) return;
@@ -397,6 +402,76 @@
     }, { passive: true });
   }
 
+  /* ---------- Glisser à gauche / à droite : changer de période (7 j, 4 sem., 3 mois, Tout) ----------
+     Sur le contenu ou sur la capsule de période. Le contenu suit le doigt, puis part sur le côté
+     pendant que la période suivante arrive de l'autre côté. Aux extrémités, un léger effet élastique.
+     Les graphiques (qu'on parcourt au doigt), les tableaux qui défilent et les champs ne déclenchent rien. */
+  function initSwipe() {
+    var seg = $("#periodSeg"), main = $("main"); if (!seg || !main) return;
+    var EXCL = ".chart,.tscroll,.yr-s,.body-stage,input,select,textarea,.dbx";
+    var btns = function () { return $$(":scope > button", seg); };
+    var cur = function () { var b = btns(); for (var i = 0; i < b.length; i++) if (b[i].getAttribute("aria-checked") === "true") return i; return -1; };
+    var panelNow = function () { return $(".panel:not([hidden])"); };
+    var go = function (dir, panel, fromPx) {
+      var b = btns(), i = cur(), j = i + dir;
+      if (i < 0 || j < 0 || j >= b.length) return false;
+      if (reduce || !panel) { b[j].click(); return true; }
+      var a = anim(panel, [{ transform: "translateX(" + (fromPx || 0).toFixed(1) + "px)", opacity: 1 }, { transform: "translateX(" + (-dir * 30) + "%)", opacity: 0 }], { duration: 170, easing: "cubic-bezier(.4,0,1,1)", fill: "forwards" });
+      var done = function () { swipeDir = dir; b[j].click(); if (a) a.cancel(); };
+      if (a) a.onfinish = done; else done();
+      return true;
+    };
+    var sx = 0, sy = 0, st = 0, track = false, lock = null, panel = null, dx = 0, shift = 0;
+    var atEdge = function (d) { var i = cur(); return (d < 0 && i >= btns().length - 1) || (d > 0 && i <= 0); };
+    document.addEventListener("touchstart", function (e) {
+      track = false;
+      if (e.touches.length !== 1 || document.body.getAttribute("data-tab") === "reglages") return;
+      var t = e.target; if (!t.closest || !(main.contains(t) || t.closest(".period")) || t.closest(EXCL)) return;
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = performance.now(); track = true; lock = null; dx = 0; shift = 0; panel = panelNow();
+    }, { passive: true });
+    document.addEventListener("touchmove", function (e) {
+      if (!track) return;
+      var mx = e.touches[0].clientX - sx, my = e.touches[0].clientY - sy;
+      if (lock === null && (Math.abs(mx) > 10 || Math.abs(my) > 10)) lock = Math.abs(mx) > Math.abs(my) * 1.3 ? "x" : "y";
+      if (lock !== "x") return;
+      dx = mx; shift = dx * (atEdge(dx) ? 0.12 : 0.35);
+      if (!reduce && panel) panel.style.transform = "translateX(" + shift.toFixed(1) + "px)";
+    }, { passive: true });
+    var end = function () {
+      if (!track) return; track = false;
+      var fast = Math.abs(dx) > 40 && performance.now() - st < 280, from = shift;
+      if (panel) panel.style.transform = "";
+      if (lock === "x" && (Math.abs(dx) > 70 || fast) && go(dx < 0 ? 1 : -1, panel, from)) return;
+      if (panel && from && !reduce) anim(panel, [{ transform: "translateX(" + from.toFixed(1) + "px)" }, { transform: "none" }], { duration: 480, easing: SPRING, fill: "none" });
+    };
+    document.addEventListener("touchend", end, { passive: true });
+    document.addEventListener("touchcancel", end, { passive: true });
+    // ordinateur : glissement horizontal à deux doigts sur le pavé tactile
+    var acc = 0, cool = 0, accT = 0;
+    main.addEventListener("wheel", function (e) {
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) * 1.5 || document.body.getAttribute("data-tab") === "reglages") return;
+      if (e.target.closest && e.target.closest(".tscroll,.yr-s")) return;
+      var now = performance.now(); if (now < cool) return;
+      if (now - accT > 300) acc = 0; accT = now;
+      acc += e.deltaX;
+      if (Math.abs(acc) > 120) { go(acc > 0 ? 1 : -1, panelNow(), 0); acc = 0; cool = now + 800; }
+    }, { passive: true });
+    // astuce affichée une seule fois sur écran tactile
+    var KEY = "suivi-repas-entrainement:astuce-glisser";
+    try {
+      if (!localStorage.getItem(KEY) && window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
+        var tries = 0;
+        var tip = function () {
+          var t = $("#toast");
+          if (t && !t.hidden && tries++ < 6) { setTimeout(tip, 2500); return; }
+          if (window.SuiviApp && window.SuiviApp.toast) window.SuiviApp.toast("Astuce : glisse vers la gauche ou la droite pour passer de 7 j à 4 sem., 3 mois et Tout.", 6000);
+          try { localStorage.setItem(KEY, "1"); } catch (e) { }
+        };
+        setTimeout(tip, 3500);
+      }
+    } catch (e) { }
+  }
+
   /* ---------- Superpositions : message, dialogue, bandeau Dropbox, dépôt de fichiers ---------- */
   function initOverlays() {
     if (reduce) return;
@@ -444,7 +519,7 @@
   }
 
   /* ---------- Démarrage ---------- */
-  initBackground(); initLight(); initTouch(); initGlow(); initReveal(); initObserve(); initTabsMin(); initOverlays(); headerIn();
+  initBackground(); initLight(); initTouch(); initGlow(); initReveal(); initObserve(); initTabsMin(); initSwipe(); initOverlays(); headerIn();
   document.documentElement.classList.toggle("mo-wait", false);
   syncInd(false);
   var rz = 0;

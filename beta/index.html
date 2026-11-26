@@ -3570,6 +3570,20 @@ var BODY = (function () {
     return '<div class="mc" aria-hidden="true"><svg class="mc-svg" viewBox="0 0 100 ' + H + '" preserveAspectRatio="none"><g class="bars" data-y0="' + y0.toFixed(2) + '">' + bars + '</g>' +
       (neg && pos ? line(0, "mzero") : "") + (ref ? line(ref, "mref-l") : "") + '</svg></div>';
   }
+  // séances par semaine : barres avec le nombre au-dessus et la semaine en dessous, objectif en pointillés
+  function weekBars(wk, goal) {
+    if (!wk.length) return "";
+    var max = Math.max(goal || 0, Math.max.apply(null, wk.map(function (x) { return x.n; }))) * 1.15 || 1;
+    var many = wk.length > 14, step = many ? Math.ceil(wk.length / 8) : 1, PH = 56;
+    var h = '<div class="wbars' + (many ? " many" : "") + '" role="img" aria-label="' + esc("Séances par semaine : " + wk.map(function (x) { return "S" + isoWeek(x.w) + " " + x.n; }).join(", ")) + '">';
+    if (goal) h += '<div class="wb-ref" style="bottom:' + (18 + goal / max * PH).toFixed(1) + 'px"><span>objectif ' + fmt(goal) + '</span></div>';
+    wk.forEach(function (x, i) {
+      var show = !many || i % step === 0 || i === wk.length - 1;
+      h += '<div class="wb' + (goal && x.n >= goal ? " ok" : "") + (x.part ? " part" : "") + '"' + (x.part ? ' title="semaine incomplète sur la période"' : "") + '>' +
+        '<b>' + (show ? x.n : "") + '</b><i style="height:' + Math.max(3, x.n / max * PH).toFixed(1) + 'px"></i><span>' + (show ? "S" + isoWeek(x.w) : "") + '</span></div>';
+    });
+    return h + '</div>';
+  }
   function miniLine(vals, color) {
     var pts = []; vals.forEach(function (v, i) { if (v !== null) pts.push([i, v]); });
     if (pts.length < 2) return '<div class="mc mc-empty" aria-hidden="true"></div>';
@@ -3637,8 +3651,12 @@ var BODY = (function () {
     tiles.splice(4, 0, tile("t-steps", "Pas", "var(--d3)", sA === null ? "–" : fmt(sA), "", chip(dl("steps"), "up", 0, 150), C.steps ? fmt(sA / C.steps * 100) + " % de l'objectif" : "par jour",
       miniBars(series(function (r) { return { v: r ? r.steps : null, c: "var(--d3)" }; }), C.steps || 0)));
     // séances : barres par semaine, avec l'objectif hebdomadaire
-    var wk = []; for (var w = SR.monday(sl.d0); w <= sl.d1; w += 7) { var nS = sl.sessions.filter(function (s) { return s.day >= w && s.day < w + 7; }).length; wk.push({ v: nS, c: nS >= C.sessions ? "var(--d3)" : "var(--acc)" }); }
-    tiles.push(tile("t-ses at-wide", "Séances", "var(--acc)", fmt(sl.sessions.length), "", P ? chip({ d: sl.sessions.length - P.sessions.length }, "up", 0, 0) : "", fmt(perW, 1) + " par semaine · objectif " + fmt(C.sessions), miniBars(wk, C.sessions)));
+    var wk = [];
+    for (var w = SR.monday(sl.d0); w <= sl.d1; w += 7) {
+      var nS = sl.sessions.filter(function (s) { return s.day >= w && s.day < w + 7; }).length;
+      wk.push({ w: w, n: nS, part: Math.min(w + 6, sl.d1) - Math.max(w, sl.d0) < 6 });
+    }
+    tiles.push(tile("t-ses at-wide", "Séances", "var(--acc)", fmt(sl.sessions.length), "", P ? chip({ d: sl.sessions.length - P.sessions.length }, "up", 0, 0) : "", fmt(perW, 1) + " par semaine · objectif " + fmt(C.sessions) + " par semaine", weekBars(wk, C.sessions)));
     var h = '<div class="label avg" role="group" aria-label="Valeurs moyennes par jour"><div class="label-t">Valeurs moyennes par jour</div>' +
       '<div class="label-s">' + periodName(sl).replace(/^d/, "D") + ", " + food.length + " " + plural(food.length, "jour") + " de repas " + plural(food.length, "saisi") + '</div>' +
       '<div class="avg-grid">' + tiles.join("") + '</div>' +
