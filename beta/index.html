@@ -3551,35 +3551,99 @@ var BODY = (function () {
     });
   }
 
-  /* ---------- Bilan : étiquette des valeurs moyennes ---------- */
+  /* ---------- Bilan : valeurs moyennes par jour, en petites tuiles à mini-graphique ----------
+     Chaque tuile : la moyenne de la période, une flèche par rapport à la période précédente
+     (verte quand ça va dans le bon sens), et un mini-graphique jour par jour avec la cible. */
+  function miniBars(vals, ref) {
+    var n = vals.length, ok = vals.filter(function (x) { return x.v !== null; });
+    if (!ok.length) return '<div class="mc mc-empty" aria-hidden="true"></div>';
+    var neg = ok.some(function (x) { return x.v < 0; }), pos = ok.some(function (x) { return x.v > 0; });
+    var max = Math.max.apply(null, ok.map(function (x) { return Math.abs(x.v); }).concat([ref || 0])) * 1.12 || 1;
+    var H = 34, y0 = neg && pos ? H / 2 : neg ? 1 : H, sc = (neg && pos ? H / 2 - 1 : H - 2) / max;
+    var bw = 100 / n, w = Math.max(0.8, bw * 0.6), bars = "";
+    vals.forEach(function (x, i) {
+      if (x.v === null) return;
+      var h = Math.max(0.9, Math.abs(x.v) * sc), y = x.v < 0 ? y0 : y0 - h;
+      bars += '<rect x="' + (i * bw + (bw - w) / 2).toFixed(2) + '" y="' + y.toFixed(2) + '" width="' + w.toFixed(2) + '" height="' + h.toFixed(2) + '" rx="0.7" style="fill:' + x.c + '"/>';
+    });
+    var line = function (v, cls) { var y = (v < 0 ? y0 + Math.abs(v) * sc : y0 - v * sc).toFixed(2); return '<line class="' + cls + '" x1="0" x2="100" y1="' + y + '" y2="' + y + '"/>'; };
+    return '<div class="mc" aria-hidden="true"><svg class="mc-svg" viewBox="0 0 100 ' + H + '" preserveAspectRatio="none"><g class="bars" data-y0="' + y0.toFixed(2) + '">' + bars + '</g>' +
+      (neg && pos ? line(0, "mzero") : "") + (ref ? line(ref, "mref-l") : "") + '</svg></div>';
+  }
+  function miniLine(vals, color) {
+    var pts = []; vals.forEach(function (v, i) { if (v !== null) pts.push([i, v]); });
+    if (pts.length < 2) return '<div class="mc mc-empty" aria-hidden="true"></div>';
+    var lo = Math.min.apply(null, pts.map(function (p) { return p[1]; })), hi = Math.max.apply(null, pts.map(function (p) { return p[1]; }));
+    if (hi - lo < 1e-6) { lo -= 1; hi += 1; }
+    var H = 34, n = Math.max(2, vals.length), X = function (i) { return i * 100 / (n - 1); }, Y = function (v) { return 3 + (hi - v) / (hi - lo) * (H - 6); };
+    var xy = pts.map(function (p) { return [X(p[0]), Y(p[1])]; });
+    var d = smoothPath(xy);
+    return '<div class="mc" aria-hidden="true"><svg class="mc-svg" viewBox="0 0 100 ' + H + '" preserveAspectRatio="none">' +
+      '<path class="marea" d="' + d + 'L' + xy[xy.length - 1][0].toFixed(1) + ',' + H + 'L' + xy[0][0].toFixed(1) + ',' + H + 'Z" style="fill:' + color + '"/>' +
+      '<path class="mline" d="' + d + '" style="stroke:' + color + '"/></svg></div>';
+  }
   function labelHTML(sl) {
     var m = state.model, C = state.cfg, days = sl.days, food = days.filter(function (d) { return d.kcal !== null; });
     var P = sl.prev && sl.prev.days.filter(function (d) { return d.kcal !== null; }).length >= 3 ? sl.prev : null;
-    var sh = macroShares(days), lw = lastWeightBefore(m, sl.d1);
-    var dl = function (k, d, arr, parr) { var c = avg(arr || days, k), p = P ? avg(parr || P.days, k) : null; return c === null || p === null ? "" : sfmt(c - p, d || 0); };
-    var pc = function (v, t) { return v === null || !t ? "" : fmt(v / t * 100) + " %"; };
-    var u = function (v, unit, d) { return v === null ? "–" : fmt(v, d) + unit; };
-    var gauge = gaugeHTML;
-    var row = function (cls, name, sm, val, delta, pct, gz) { return '<div class="lr ' + cls + '"><span class="ln">' + name + (sm ? '<small>' + sm + '</small>' : "") + '</span><span class="lv">' + val + '</span><span class="ld">' + (delta || "") + '</span><span class="lp">' + (pct || "") + '</span>' + (gz || "") + '</div>'; };
+    var sh = macroShares(days), lw = lastWeightBefore(m, sl.d1), R = sl.rate;
     var kA = avg(days, "kcal"), pA = avg(days, "prot"), cA = avg(days, "carb"), fA = avg(days, "fat"), fiA = avg(days, "fiber"), bA = avg(days, "burn"), sA = avg(days, "steps");
     var bals = days.filter(function (d) { return d.balance !== null; }), pb = P ? P.days.filter(function (d) { return d.balance !== null; }) : [], balA = avg(bals, "balance"), cum = sum(bals, "balance");
-    var perW = sl.sessions.length / (sl.nDays / 7), R = sl.rate;
-    var h = '<div class="label" role="group" aria-label="Valeurs moyennes par jour"><div class="label-t">Valeurs moyennes par jour</div>' +
-      '<div class="label-s">' + periodName(sl).replace(/^d/, "D") + ", " + food.length + " " + plural(food.length, "jour") + " de repas " + plural(food.length, "saisi") + '</div><div class="label-bar"></div>' +
-      '<div class="lr head"><span></span><span></span><span>' + (P ? "vs avant" : "") + '</span><span>objectif</span></div>';
-    h += row("big", "Énergie", "", u(kA, " kcal"), dl("kcal"), pc(kA, C.kcal), gauge(kA, C.kcal, "range"));
-    h += row("", "Protéines", pA !== null && lw ? fmt(pA / lw, 1) + " g/kg" : "", u(pA, " g"), dl("prot"), pc(pA, C.prot), gauge(pA, C.prot));
-    h += row("", "Glucides", sh ? fmt(sh.c * 100) + " % des kcal" : "", u(cA, " g"), dl("carb"), "");
-    h += row("", "Lipides", (sh ? fmt(sh.f * 100) + " % des kcal" : "") + (fA !== null && lw ? ", " + fmt(fA / lw, 1) + " g/kg" : ""), u(fA, " g"), dl("fat"), "");
-    h += row("", "Fibres", count(days, "fiber") < food.length ? count(days, "fiber") + " j. renseignés" : "", u(fiA, " g", 1), dl("fiber", 1), pc(fiA, C.fiber), gauge(fiA, C.fiber));
-    h += '<div class="label-bar mid"></div>';
-    h += row("", "Dépense", "mesurée par la montre", u(bA, " kcal"), dl("burn"), "");
-    if (R && R.tdee) h += row("sub", "Dépense réelle estimée", "d'après pesées et repas", fmt(Math.round(R.tdee / 10) * 10) + " kcal", "", "");
-    h += row("", "Bilan", balA === null ? "" : "cumul " + sfmt(cum) + " kcal", balA === null ? "–" : sfmt(balA) + " kcal", dl("balance", 0, bals, pb), "");
-    h += row("", "Pas", "", fmt(sA), dl("steps"), C.steps ? pc(sA, C.steps) : "", C.steps ? gauge(sA, C.steps) : "");
-    h += row("", "Séances", fmt(perW, 1) + " par semaine", fmt(sl.sessions.length), P ? sfmt(sl.sessions.length - P.sessions.length) : "", sl.nDays >= 7 ? pc(perW, C.sessions) : "", sl.nDays >= 7 ? gauge(perW, C.sessions) : "");
-    h += '<div class="label-foot">Objectifs : ' + fmt(C.kcal) + " kcal, " + fmt(C.prot) + " g de protéines, " + fmt(C.fiber) + " g de fibres" + (C.steps ? ", " + fmt(C.steps) + " pas" : "") + " et " + fmt(C.sessions) + " " + plural(C.sessions, "séance") + " par semaine." +
-      (P ? " « vs avant » : écart avec les " + sl.nDays + " jours précédents." : "") + (balA !== null ? " Le bilan cumulé équivaut à environ " + fmt(Math.abs(cum) / KCAL_PER_KG, 2) + " kg de graisse." : "") + '</div></div>';
+    var perW = sl.sessions.length / (sl.nDays / 7);
+    // écart avec la période précédente
+    var dl = function (k, arr, parr) { var c = avg(arr || days, k), p = P ? avg(parr || P.days, k) : null; return c === null || p === null ? null : { d: c - p, c: c, p: p }; };
+    // pastille : ▲/▼ et couleur selon le bon sens (up, down, ou « target » = plus près de la cible)
+    var chip = function (x, better, dec, tol, target) {
+      if (!x) return "";
+      var a = Math.abs(x.d);
+      if (a <= (tol || 0)) return '<span class="dchip">= stable</span>';
+      var good = better === "up" ? x.d > 0 : better === "down" ? x.d < 0 : better === "target" ? Math.abs(x.c - target) < Math.abs(x.p - target) : null;
+      return '<span class="dchip' + (good === null ? "" : good ? " good" : " bad") + '">' + (x.d > 0 ? "▲ " : "▼ ") + fmt(a, dec || 0) + '</span>';
+    };
+    // valeurs jour par jour sur la période
+    var byDay = {}; days.forEach(function (d) { byDay[d.day] = d; });
+    var series = function (fn) { var out = []; for (var d = sl.d0; d <= sl.d1; d++) out.push(fn(byDay[d] || null)); return out; };
+    var phase = C.phase, balBetter = phase === "seche" ? "down" : phase === "masse" ? "up" : "target";
+    var tile = function (cls, label, dot, val, unit, chipH, sub, chart) {
+      return '<div class="at ' + cls + '"><div class="at-h"><span class="at-l">' + (dot ? '<i style="background:' + dot + '"></i>' : "") + label + '</span>' + chipH + '</div>' +
+        '<div class="at-v">' + val + (unit ? '<small>' + unit + '</small>' : "") + '</div>' + (sub ? '<div class="at-s">' + sub + '</div>' : "") + chart + '</div>';
+    };
+    var pct = function (v, t) { return v === null || !t ? "" : fmt(v / t * 100) + " % de la cible"; };
+    var tiles = [];
+    // énergie : barres bleues sous la cible, orange au-dessus, grises à ±5 %
+    tiles.push(tile("t-kcal", "Énergie", "var(--d1)", kA === null ? "–" : fmt(kA), "kcal", chip(dl("kcal"), "target", 0, 15, C.kcal), pct(kA, C.kcal),
+      miniBars(series(function (r) { var v = r ? r.kcal : null, q = v === null ? 0 : (v - C.kcal) / C.kcal; return { v: v, c: Math.abs(q) < 0.05 ? "var(--d5)" : q < 0 ? "var(--d1)" : "var(--d2)" }; }), C.kcal)));
+    // protéines : vertes les jours où la cible est atteinte
+    tiles.push(tile("t-prot", "Protéines", "var(--d2)", pA === null ? "–" : fmt(pA), "g", chip(dl("prot"), "up", 0, 2), (pA !== null && lw ? fmt(pA / lw, 1) + " g/kg · " : "") + pct(pA, C.prot),
+      miniBars(series(function (r) { var v = r ? r.prot : null; return { v: v, c: v !== null && v >= C.prot ? "var(--d3)" : "var(--d2)" }; }), C.prot)));
+    // répartition des macros en anneau
+    if (sh && cA !== null && fA !== null && pA !== null) {
+      var seg = function (share, start, color) { var len = Math.max(0, share * 100 - 1.6); return '<circle cx="18" cy="18" r="15.9155" style="stroke:' + color + '" stroke-dasharray="' + len.toFixed(2) + ' ' + (100 - len).toFixed(2) + '" stroke-dashoffset="' + (25 - start * 100 - 0.8).toFixed(2) + '"/>'; };
+      var donut = '<svg class="donut" viewBox="0 0 36 36" aria-hidden="true"><circle class="dn-bg" cx="18" cy="18" r="15.9155"/><g class="dn">' +
+        seg(sh.p, 0, "var(--d2)") + seg(sh.c, sh.p, "var(--d3)") + seg(sh.f, sh.p + sh.c, "var(--d1)") + '</g></svg>';
+      tiles.push('<div class="at t-mac at-wide"><div class="at-h"><span class="at-l">Répartition des kcal</span></div><div class="mac-row">' + donut +
+        '<ul class="mac-l"><li><i style="background:var(--d2)"></i>Protéines <span>' + fmt(pA) + ' g</span><b>' + fmt(sh.p * 100) + ' %</b></li><li><i style="background:var(--d3)"></i>Glucides <span>' + fmt(cA) + ' g</span><b>' + fmt(sh.c * 100) + ' %</b></li><li><i style="background:var(--d1)"></i>Lipides <span>' + fmt(fA) + ' g' + (lw ? ' · ' + fmt(fA / lw, 1) + ' g/kg' : '') + '</span><b>' + fmt(sh.f * 100) + ' %</b></li></ul></div></div>');
+    } else tiles.push(tile("t-mac at-wide", "Répartition", "", "–", "", "", "macros non saisies", ""));
+    // fibres
+    var nFib = count(days, "fiber");
+    tiles.push(tile("t-fib", "Fibres", "var(--d4)", fiA === null ? "–" : fmt(fiA, 1), "g", chip(dl("fiber"), "up", 1, 0.5), "repère " + fmt(C.fiber) + " g" + (nFib < food.length ? " · " + nFib + " j. renseignés" : ""),
+      miniBars(series(function (r) { return { v: r ? r.fiber : null, c: "var(--d4)" }; }), C.fiber)));
+    // dépense : courbe de la montre, et la dépense réelle estimée d'après les pesées
+    tiles.push(tile("t-burn", "Dépense", "var(--d5)", bA === null ? "–" : fmt(bA), "kcal", chip(dl("burn"), "up", 0, 20), R && R.tdee ? "réelle estimée ≈ " + fmt(Math.round(R.tdee / 10) * 10) + " kcal" : "mesurée par la montre",
+      miniLine(series(function (r) { return r ? r.burn : null; }), "var(--d5)")));
+    // bilan : déficit en bleu, surplus en orange
+    tiles.push(tile("t-bal", "Bilan", balA !== null && balA > 0 ? "var(--d2)" : "var(--d1)", balA === null ? "–" : sfmt(balA), "kcal", chip(dl("balance", bals, pb), balBetter, 0, 20, 0), balA === null ? "" : "cumul " + sfmt(cum) + " ≈ " + fmt(Math.abs(cum) / KCAL_PER_KG, 2) + " kg",
+      miniBars(series(function (r) { var v = r ? r.balance : null; return { v: v, c: v !== null && v > 0 ? "var(--d2)" : "var(--d1)" }; }), 0)));
+    // pas
+    tiles.splice(4, 0, tile("t-steps", "Pas", "var(--d3)", sA === null ? "–" : fmt(sA), "", chip(dl("steps"), "up", 0, 150), C.steps ? fmt(sA / C.steps * 100) + " % de l'objectif" : "par jour",
+      miniBars(series(function (r) { return { v: r ? r.steps : null, c: "var(--d3)" }; }), C.steps || 0)));
+    // séances : barres par semaine, avec l'objectif hebdomadaire
+    var wk = []; for (var w = SR.monday(sl.d0); w <= sl.d1; w += 7) { var nS = sl.sessions.filter(function (s) { return s.day >= w && s.day < w + 7; }).length; wk.push({ v: nS, c: nS >= C.sessions ? "var(--d3)" : "var(--acc)" }); }
+    tiles.push(tile("t-ses at-wide", "Séances", "var(--acc)", fmt(sl.sessions.length), "", P ? chip({ d: sl.sessions.length - P.sessions.length }, "up", 0, 0) : "", fmt(perW, 1) + " par semaine · objectif " + fmt(C.sessions), miniBars(wk, C.sessions)));
+    var h = '<div class="label avg" role="group" aria-label="Valeurs moyennes par jour"><div class="label-t">Valeurs moyennes par jour</div>' +
+      '<div class="label-s">' + periodName(sl).replace(/^d/, "D") + ", " + food.length + " " + plural(food.length, "jour") + " de repas " + plural(food.length, "saisi") + '</div>' +
+      '<div class="avg-grid">' + tiles.join("") + '</div>' +
+      '<div class="label-foot">Objectifs : ' + fmt(C.kcal) + " kcal, " + fmt(C.prot) + " g de protéines, " + fmt(C.fiber) + " g de fibres" + (C.steps ? ", " + fmt(C.steps) + " pas" : "") + " et " + fmt(C.sessions) + " " + plural(C.sessions, "séance") + " par semaine. Pointillés : la cible." +
+      (P ? " Flèches : écart avec les " + sl.nDays + " jours précédents, en vert quand ça va dans le bon sens." : "") + '</div></div>';
     return h;
   }
 

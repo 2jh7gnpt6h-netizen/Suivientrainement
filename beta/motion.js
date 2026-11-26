@@ -118,7 +118,7 @@
       if (a) a.onfinish = function () { s.remove(); }; else s.remove();
     }, { passive: true });
     document.addEventListener("click", function (e) {
-      var t = e.target.closest && e.target.closest(".stats>.stat,.cell.has,.nx,.hero-facts>div");
+      var t = e.target.closest && e.target.closest(".stats>.stat,.cell.has,.nx,.hero-facts>div,.at");
       if (!t) return;
       anim(t, [{ transform: "scale(1)" }, { transform: "scale(1.04,.96)" }, { transform: "scale(.98,1.025)" }, { transform: "scale(1)" }], { duration: 480, easing: "ease-out", fill: "none" });
     });
@@ -235,17 +235,27 @@
   }
 
   /* ---------- Contenu d'un bloc qui entre ---------- */
-  var COUNT = ".hero-v,.stat-v,.hero-facts b";
+  var COUNT = ".hero-v,.stat-v,.hero-facts b,.at-v";
   var GROW = ".adh-t span,.htrack .seg-p,.htrack .seg-s,.mbtn .mt span,.wd-t span,.bal-t span,.lgauge i,.dd-mac";
-  var LIST = ".facts li,.nx";
+  var LIST = ".facts li,.nx,.at";
   function inner(b, d, key, soft) {
     $$(".chart", b).forEach(function (ch) { var s = ch.querySelector("svg"); if (s) svgEnter(s, d, soft); ch._mw = ch._w; });
-    $$(COUNT, b).slice(0, 6).forEach(function (el, i) { count(el, d + 100 + i * 70, soft ? 700 : 1000, key + "|" + i); });
+    $$(COUNT, b).slice(0, 9).forEach(function (el, i) { count(el, d + 100 + i * 70, soft ? 700 : 1000, key + "|" + i); });
+    // mini-graphiques des tuiles : les barres poussent depuis leur ligne de base, les courbes se dévoilent
+    $$(".mc-svg", b).forEach(function (sv, i) {
+      var g = sv.querySelector("g.bars"), dd = d + (soft ? 60 : 260) + i * 55;
+      if (g) { g.style.transformBox = "view-box"; g.style.transformOrigin = "0 " + (parseFloat(g.getAttribute("data-y0")) || 0) + "px"; anim(g, [{ transform: "scaleY(0)" }, { transform: "none" }], { duration: soft ? 600 : 850, delay: dd, easing: SPRING }); }
+      else anim(sv, [{ clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0 0 0)" }], { duration: soft ? 600 : 1000, delay: dd, easing: SOFT });
+    });
+    $$(".donut .dn", b).forEach(function (g) {
+      g.style.transformBox = "view-box"; g.style.transformOrigin = "18px 18px";
+      anim(g, [{ transform: "rotate(-140deg)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: soft ? 600 : 1100, delay: d + 300, easing: SPRING });
+    });
     $$(GROW, b).slice(0, 14).forEach(function (el, i) {
       el.style.transformOrigin = "left center";
       anim(el, [{ transform: "scaleX(0)" }, { transform: "none" }], { duration: soft ? 650 : 950, delay: d + (soft ? 60 : 240) + i * (soft ? 15 : 30), easing: SPRING });
     });
-    if (!soft) $$(LIST, b).slice(0, 6).forEach(function (el, i) {
+    if (!soft) $$(LIST, b).slice(0, 8).forEach(function (el, i) {
       anim(el, [{ opacity: 0, transform: "translateX(-12px)" }, { opacity: 1, transform: "none" }], { duration: 560, delay: d + 160 + i * 45, easing: SOFT });
     });
     // reflet sur les grandes cartes (les tuiles de chiffres ont déjà leurs compteurs)
