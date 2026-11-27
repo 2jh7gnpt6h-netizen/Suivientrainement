@@ -26,7 +26,7 @@ jobs:
       - name: Préparer le site
         run: |
           mkdir _site
-          cp index.html dropbox-sync.js sw.js manifest.webmanifest _site/
+          cp index.html dropbox-sync.js glass.css motion.js sw.js manifest.webmanifest _site/
           cp -r icons _site/
           # Version test (nouvelle direction artistique), servie sous /beta/
           mkdir _site/beta

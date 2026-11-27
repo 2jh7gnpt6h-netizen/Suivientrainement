@@ -16,6 +16,8 @@ seulement de Dropbox vers le navigateur et restent sur l'appareil (localStorage)
 | Fichier | Rôle |
 | --- | --- |
 | `index.html` | La page. Configuration (`APP_CONFIG`) tout en haut. |
+| `glass.css` | Apparence « liquid glass » (verre, couleurs claires et sombres). |
+| `motion.js` | Mouvement : entrées animées, compteurs, balayage gauche/droite pour changer de période. |
 | `dropbox-sync.js` | Connexion OAuth 2 PKCE, `files/list_folder`, `files/download`, renouvellement du token. |
 | `manifest.webmanifest`, `icons/` | Installation sur l'écran d'accueil (PWA). |
 | `sw.js` | Mode hors ligne : la page s'ouvre sans réseau avec les dernières données. |
@@ -61,29 +63,33 @@ affiche un code que tu colles dans l'app.
 Toute modification poussée sur `main` est republiée automatiquement par GitHub Pages
 (Settings → Pages → Source : GitHub Actions) en une à deux minutes.
 
-## Version test : nouvelle direction artistique
+## Séances : prochaine séance en direct
 
-Une version test est publiée à part, sans toucher à la version officielle :
-**https://2jh7gnpt6h-netizen.github.io/Suivientrainement/beta/**
+- **Prochaine séance** (en tête de l'onglet Séances, résumée dans le Bilan) : pour
+  chaque exercice, série par série, la dernière fois → l'objectif (une rep de plus
+  sur une série, ou la charge à monter quand toutes les séries à la charge max ont
+  atteint le plafond de reps réglé), record en vue, plateau, repos. Chaque exercice
+  se coche pendant la séance ; les coches restent sur l'appareil jusqu'à minuit et
+  la séance en cours revient à la réouverture.
+- **Journal des séances** : verdict par exercice par rapport à la fois d'avant
+  (+5 kg, +2 reps, pareil…) et séries fléchées en vert ou en rouge.
+- Records regroupés par exercice, progression par exercice lisible au téléphone.
 
-- Mêmes données, mêmes réglages. L'apparence change (`beta/glass.css` pour le
-  verre, `beta/motion.js` pour le mouvement) et quelques vues sont repensées :
-  - **Prochaine séance en direct** (en tête de l'onglet Séances, résumée dans le
-    Bilan) : pour chaque exercice, série par série, la dernière fois → l'objectif
-    (une rep de plus sur une série, ou la charge à monter), record en vue,
-    plateau, repos. Chaque exercice se coche pendant la séance ; les coches restent
-    sur l'appareil jusqu'à minuit et la séance en cours revient à la réouverture.
-  - **Journal des séances** : verdict par exercice par rapport à la fois d'avant
-    (+5 kg, +2 reps, pareil…) et séries fléchées en vert ou en rouge.
-  - Records regroupés par exercice, progression par exercice lisible au téléphone,
-    valeurs moyennes en petites tuiles, balayage gauche/droite pour changer de période.
-- Dans un même navigateur, la version test et la version officielle partagent
-  les données et la connexion Dropbox (même site).
+## Version test (`/beta/`)
+
+Un espace de test reste publié à part, pour essayer des changements avant de les
+mettre sur la page principale : **https://2jh7gnpt6h-netizen.github.io/Suivientrainement/beta/**
+(pour l'instant, la même version que la page principale).
+
+- Dans un même navigateur, la version test et la page principale partagent les
+  données et la connexion Dropbox (même site).
 - Pour se connecter à Dropbox depuis la version test dans un navigateur où l'on
   n'est pas encore connecté : soit « Connexion par code », soit ajouter
   `https://2jh7gnpt6h-netizen.github.io/Suivientrainement/beta/` dans les
   Redirect URIs de l'app Dropbox.
-- Pas de service worker propre : celui de la version officielle couvre ce dossier.
-- Mise en service officielle : remplacer `index.html` et `dropbox-sync.js` par ceux
-  de `beta/` (en remettant l'enregistrement du service worker et les chemins
-  `icons/`), ajouter `glass.css` et `motion.js`, puis supprimer le dossier `beta/`.
+- Pas de service worker propre : celui de la page principale couvre ce dossier.
+- Passer la version test en principal : copier `beta/index.html` vers `index.html`
+  en retirant la pastille « Version test » et le « (test) » du titre, et en
+  remplaçant `../icons/` par `icons/` ; copier `beta/glass.css` et `beta/motion.js`
+  à la racine ; garder le `dropbox-sync.js` de la racine (il enregistre le service
+  worker) ; changer `VERSION` dans `sw.js` pour renouveler le cache hors ligne.

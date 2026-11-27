@@ -3,8 +3,8 @@
    - Bibliothèques et polices (CDN) : cache d'abord.
    - Dropbox n'est jamais intercepté ni mis en cache : les données restent
      uniquement dans le stockage de la page sur l'appareil. */
-var VERSION = "suivi-v5";
-var SHELL = ["./", "index.html", "dropbox-sync.js", "manifest.webmanifest", "icons/icon-192.png", "icons/apple-touch-icon.png"];
+var VERSION = "suivi-v6";
+var SHELL = ["./", "index.html", "dropbox-sync.js", "glass.css", "motion.js", "manifest.webmanifest", "icons/icon-192.png", "icons/apple-touch-icon.png"];
 var CDN = ["cdnjs.cloudflare.com", "cdn.jsdelivr.net", "fonts.googleapis.com", "fonts.gstatic.com"];
 
 self.addEventListener("install", function (e) {
